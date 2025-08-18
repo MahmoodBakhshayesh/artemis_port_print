@@ -1,7 +1,9 @@
 name: artemis_port_print
-description: "A new Flutter project."
+description: "Reliable serial (COM) port printing for Flutter.
+Easily list ports, open connections, send commands, and wait for structured responses with built-in timeout handling, result classification (ok, error, unknown, timeout), and optional STX/ETX framing.
+Perfect for receipt printers, label printers, and other serial devices that require request → response communication."
 version: 0.0.1
-homepage:
+homepage: https://github.com/MahmoodBakhshayesh/artemis_port_print
 
 environment:
   sdk: ^3.8.1

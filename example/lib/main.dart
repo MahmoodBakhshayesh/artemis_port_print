@@ -110,7 +110,7 @@ class _MyHomePageState extends State<MyHomePage> {
               children: [
                 for (final address in availablePorts)
                   Builder(builder: (context) {
-                    final port = ArtemisPortPrint.createSerialPort(address);
+                    final port = ArtemisPortPrint.createSerialPort(address,config: ArtemisPortPrintSetting(portName: address,));
                     return ExpansionTile(
                       leading: IconButton(onPressed: () async {
                         // ArtemisPortPrint.log(port, "AV");

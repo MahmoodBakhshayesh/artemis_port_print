@@ -9,8 +9,10 @@ import 'dart:typed_data';
 
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 
+import 'enums.dart';
+
 /// Simple protocol selector to emulate the C# behavior.
-enum ProtocolMode { none, framed }
+
 
 /// Event payload similar to DataReceive in your C# code.
 class DataReceive {

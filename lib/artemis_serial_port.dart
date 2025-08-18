@@ -5,17 +5,15 @@ import 'dart:convert';
 import 'package:artemis_port_print/artemis_port_print.dart';
 import 'package:artemis_port_print/util.dart';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
+
+import 'enums.dart';
 export 'package:flutter_libserialport/flutter_libserialport.dart';
 
 class FrameParser {
   final int stx, etx, dle;
   final bool includeTrailingControl;
-  FrameParser({
-    this.stx = 0x02,
-    this.etx = 0x03,
-    this.dle = 0x10,
-    this.includeTrailingControl = false,
-  });
+
+  FrameParser({this.stx = 0x02, this.etx = 0x03, this.dle = 0x10, this.includeTrailingControl = false});
 
   final List<int> _payload = [];
   bool _in = false, _esc = false;
@@ -25,18 +23,34 @@ class FrameParser {
     for (var i = 0; i < chunk.length; i++) {
       final b = chunk[i];
       if (!_in) {
-        if (b == stx) { _in = true; _esc = false; _payload.clear(); }
+        if (b == stx) {
+          _in = true;
+          _esc = false;
+          _payload.clear();
+        }
         continue;
       }
-      if (_esc) { _payload.add(b); _esc = false; continue; }
-      if (b == dle) { _esc = true; continue; }
+      if (_esc) {
+        _payload.add(b);
+        _esc = false;
+        continue;
+      }
+      if (b == dle) {
+        _esc = true;
+        continue;
+      }
       if (b == etx) {
         if (includeTrailingControl && i + 1 < chunk.length) {
           final n = chunk[i + 1];
-          if (n < 0x20) { _payload.add(n); i++; }
+          if (n < 0x20) {
+            _payload.add(n);
+            i++;
+          }
         }
         out.add(Uint8List.fromList(_payload));
-        _payload.clear(); _in = false; _esc = false;
+        _payload.clear();
+        _in = false;
+        _esc = false;
         continue;
       }
       _payload.add(b);
@@ -44,13 +58,18 @@ class FrameParser {
     return out;
   }
 
-  void reset() { _payload.clear(); _in = false; _esc = false; }
+  void reset() {
+    _payload.clear();
+    _in = false;
+    _esc = false;
+  }
 }
 
 class DataReceive {
   final String text;
   final List<int> bytes;
   final int? indexOfBinaryByte;
+
   DataReceive({required this.text, required this.bytes, this.indexOfBinaryByte});
 }
 
@@ -58,28 +77,29 @@ class ArtemisSerialPort implements SerialPort {
   final SerialPort _inner;
   final ProtocolMode protocolMode;
   final FrameParser _parser;
+  SerialDeviceConfig? serialDeviceConfig;
 
   SerialPortReader? _reader;
   final _dataCtrl = StreamController<DataReceive>.broadcast();
 
   Stream<DataReceive> get onData => _dataCtrl.stream;
 
-  ArtemisSerialPort(String name, {
-    this.protocolMode = ProtocolMode.none,
-    FrameParser? parser,
-  })  : _inner = SerialPort(name),
-        _parser = parser ?? FrameParser();
+  ArtemisSerialPort(String name, {this.protocolMode = ProtocolMode.none, this.serialDeviceConfig, FrameParser? parser}) : _inner = SerialPort(name), _parser = parser ?? FrameParser();
 
   // ---------- Extra helpers ----------
   Future<bool> openReadWriteSafe() async => _inner.openReadWrite();
 
+  ArtemisSerialPort setConfig(ArtemisPortPrintSetting config) {
+    serialDeviceConfig = config.getConfig;
+    return this;
 
-  Future<PrintResult> printData(String data){
+  }
+
+  Future<PrintResult> printData(String data) {
     return ArtemisPortPrint.print(this, data);
   }
 
   // your previous function turned into a queued, returning call
-
 
   void startListening() {
     _reader?.close();
@@ -104,11 +124,7 @@ class ArtemisSerialPort implements SerialPort {
   }
 
   /// Send bytes and collect response until quiet or timeout.
-  Future<Uint8List> sendAndRead({
-    required List<int> request,
-    Duration timeout = const Duration(seconds: 1),
-    Duration quietWindow = const Duration(milliseconds: 150),
-  }) async {
+  Future<Uint8List> sendAndRead({required List<int> request, Duration timeout = const Duration(seconds: 1), Duration quietWindow = const Duration(milliseconds: 150)}) async {
     if (!_inner.isOpen) throw StateError('Port not open');
     // ensure listening
     startListening();
@@ -134,7 +150,11 @@ class ArtemisSerialPort implements SerialPort {
     final hard = Timer(timeout, finish);
 
     final ok = await writeAll(request);
-    if (!ok) { hard.cancel(); await sub.cancel(); return Uint8List(0); }
+    if (!ok) {
+      hard.cancel();
+      await sub.cancel();
+      return Uint8List(0);
+    }
 
     final res = await completer.future;
     hard.cancel();
@@ -155,14 +175,19 @@ class ArtemisSerialPort implements SerialPort {
 
       int? idx;
       for (var i = 0; i < payload.length; i++) {
-        if (payload[i] <= 31) { idx = i; break; }
+        if (payload[i] <= 31) {
+          idx = i;
+          break;
+        }
       }
 
-      _dataCtrl.add(DataReceive(
-        text: text,
-        bytes: payload.toList(), // no STX/ETX here
-        indexOfBinaryByte: idx,
-      ));
+      _dataCtrl.add(
+        DataReceive(
+          text: text,
+          bytes: payload.toList(), // no STX/ETX here
+          indexOfBinaryByte: idx,
+        ),
+      );
     }
   }
 
@@ -231,12 +256,10 @@ class ArtemisSerialPort implements SerialPort {
   set config(SerialPortConfig c) => _inner.config = c;
 
   @override
-  Uint8List read(int bytes, {int timeout = -1}) =>
-      _inner.read(bytes, timeout: timeout);
+  Uint8List read(int bytes, {int timeout = -1}) => _inner.read(bytes, timeout: timeout);
 
   @override
-  int write(Uint8List bytes, {int timeout = -1}) =>
-      _inner.write(bytes, timeout: timeout);
+  int write(Uint8List bytes, {int timeout = -1}) => _inner.write(bytes, timeout: timeout);
 
   @override
   int get bytesAvailable => _inner.bytesAvailable;
@@ -245,8 +268,7 @@ class ArtemisSerialPort implements SerialPort {
   int get bytesToWrite => _inner.bytesToWrite;
 
   @override
-  void flush([int buffers = SerialPortBuffer.both]) =>
-      _inner.flush(buffers);
+  void flush([int buffers = SerialPortBuffer.both]) => _inner.flush(buffers);
 
   @override
   void drain() => _inner.drain();
@@ -263,5 +285,5 @@ class ArtemisSerialPort implements SerialPort {
   @override
   int get address => _inner.address;
 
-// Note: static members (availablePorts, lastError) are accessed via SerialPort.
+  // Note: static members (availablePorts, lastError) are accessed via SerialPort.
 }

@@ -2,6 +2,7 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 
+import 'artemis_port_print.dart';
 import 'artemis_serial_port.dart';
 
 enum StatusState { online, offline, printHeadLifted, busy, unknown, paperOut, paperJam }
@@ -25,7 +26,8 @@ class DeviceStatus {
 
   DeviceStatus clone() {
     final d = DeviceStatus();
-    d..ready = ready
+    d
+      ..ready = ready
       ..init = init
       ..notExist = notExist
       ..diskError = diskError
@@ -41,16 +43,13 @@ class DeviceStatus {
   }
 }
 
-
 class StatusParsers {
   // OS=0 or OS#0 or OS:0  (captures one digit 0..9)
-  static final RegExp _osExp =
-  RegExp(r'\bOS\s*[#=:]\s*([0-9])', caseSensitive: false);
+  static final RegExp _osExp = RegExp(r'\bOS\s*[#=:]\s*([0-9])', caseSensitive: false);
 
   // SI=00 / SI=11 / SI=1O / SI=1J (two chars after the delimiter)
   // Accepts 0/O ambiguity.
-  static final RegExp _siExp =
-  RegExp(r'\bSI\s*[#=:]\s*([A-Za-z0-9]{2})', caseSensitive: false);
+  static final RegExp _siExp = RegExp(r'\bSI\s*[#=:]\s*([A-Za-z0-9]{2})', caseSensitive: false);
 
   static String? extractOS(String s) {
     final m = _osExp.firstMatch(s);
@@ -66,11 +65,9 @@ class StatusParsers {
   }
 }
 
-
 class StatusManager {
   final DeviceStatus _status = DeviceStatus();
-  final ValueNotifier<DeviceStatus> statusNotifier =
-  ValueNotifier<DeviceStatus>(DeviceStatus());
+  final ValueNotifier<DeviceStatus> statusNotifier = ValueNotifier<DeviceStatus>(DeviceStatus());
 
   DeviceStatus get status => statusNotifier.value;
 
@@ -153,7 +150,7 @@ class StatusManager {
               ..state = StatusState.busy;
             break;
 
-          default:  // other error/unknown
+          default: // other error/unknown
             _status
               ..ready = false
               ..init = false
@@ -252,46 +249,38 @@ class StatusManager {
   }
 }
 
-
 class AeaSequencer {
-  final ArtemisSerialPort port; // your wrapper
-  final StatusManager statusMgr;
+  final ArtemisPortPrinter printer;
 
-  AeaSequencer(this.port, this.statusMgr);
+  AeaSequencer(this.printer);
 
   /// Runs the AEA bootstrap/status sequence in order.
-  /// Returns the final status snapshot.
   Future<DeviceStatus> run() async {
-    // MX
-    await _sendAndUpdate("MX");
+    await printer.open(startPolling: false);
 
-    // UG#GID
-    await _sendAndUpdate("UG#GID");
+    await _send("MX");
+    await _send("UG#GID");
+    await _send("EP#AIRLINEID=GID#HARDCODE=HDC#UNSOL=Y");
+    await _send("UC#999");
+    await _send("AV");
+    await _send("PV");
+    await _send("SQ", isSqni: true);
 
-    // EP#AIRLINEID=GID#HARDCODE=HDC#UNSOL=Y
-    await _sendAndUpdate("EP#AIRLINEID=GID#HARDCODE=HDC#UNSOL=Y");
-
-    // UC#999
-    await _sendAndUpdate("UC#999");
-
-    // AV
-    await _sendAndUpdate("AV");
-
-    // PV
-    await _sendAndUpdate("PV");
-
-    // SQ
-    await _sendAndUpdate("SQ", isSqni: true); // mark as unsolicited/status-query if needed
-
-    return statusMgr.status;
+    return printer.status;
   }
 
-  Future<void> _sendAndUpdate(String cmd, {bool isSqni = false}) async {
-    final res = await port.printData(cmd);
-    // Prefer decoded text; if null, try bytes as ASCII.
-    final text = res.text ?? (res.bytes != null ? String.fromCharCodes(res.bytes!) : '');
-    log("_sendAndUpdate $cmd ==> ${text}");
+  Future<void> _send(String cmd, {bool isSqni = false}) async {
+    final res = await printer.print(cmd);
 
-    statusMgr.updateFrom(text, sqni: isSqni);
+    final text = (res.text?.trim().isNotEmpty == true)
+        ? res.text!.trim()
+        : (res.bytes != null ? String.fromCharCodes(res.bytes!).trim() : '');
+
+    log('_send $cmd ==> $text');
+
+    if (text.isNotEmpty) {
+      printer.updateStatusFrom(text, isSqni: isSqni);
+    }
   }
 }
+

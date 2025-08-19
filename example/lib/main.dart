@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'dart:developer';
 
 import 'package:artemis_port_print/artemis_port_print.dart';
+import 'package:artemis_port_print/artemis_serial_port.dart';
+import 'package:artemis_port_print/classes/SerialPrintQueue.dart';
+import 'package:artemis_port_print/classes/_QueuePortAdapter.dart';
 import 'package:artemis_port_print/enums.dart';
 import 'package:artemis_port_print/status_class.dart';
 import 'package:artemis_port_print/util.dart';
@@ -77,13 +80,13 @@ class _MyHomePageState extends State<MyHomePage> {
     // Example: DLE EOT 4 (0x10 0x04 0x04) — ask paper roll status.
   }
 
-  Future<dynamic> portPrint(ArtemisSerialPort port) async {
-    final result = await port.printData("SQ");
-    // final result = await port.queryStatus();
-    log(result.toString());
-    // log(result.text??'');
-    return result;
-  }
+  // Future<dynamic> portPrint(ArtemisSerialPort port) async {
+  //   final result = await port.printData("SQ");
+  //   // final result = await port.queryStatus();
+  //   log(result.toString());
+  //   // log(result.text??'');
+  //   return result;
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -98,7 +101,10 @@ class _MyHomePageState extends State<MyHomePage> {
         // TRY THIS: Try changing the color here to a specific color (to
         // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
         // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        backgroundColor: Theme
+            .of(context)
+            .colorScheme
+            .inversePrimary,
         // Here we take the value from the MyHomePage object that was created by
         // the App.build method, and use it to set our appbar title.
         title: Text(widget.title),
@@ -111,7 +117,8 @@ class _MyHomePageState extends State<MyHomePage> {
                 for (final address in availablePorts)
                   Builder(
                     builder: (context) {
-                      final port = ArtemisPortPrint.createSerialPort(address, config: ArtemisPortPrintSetting(portName: address));
+                      final printer = ArtemisPortPrinter(address, setting: ArtemisPortPrintSetting(portName: address));
+                      final port = printer.port;
                       return ExpansionTile(
                         leading: IconButton(
                           onPressed: () async {
@@ -134,7 +141,7 @@ class _MyHomePageState extends State<MyHomePage> {
                             //                         await ArtemisPortPrint.printBytesToCom(portName: 'COM3', bytes:utf8.encode("AV"));
                             //                       testQuery();
                             // portPrint(port);
-                            port.queryStatus();
+                            printer.testQuery();
                             // SerialProbe().test6();
                           },
                           icon: Icon(Icons.home),
@@ -144,17 +151,35 @@ class _MyHomePageState extends State<MyHomePage> {
                             Text(address),
                             TextButton(
                               onPressed: () {
-                                portPrint(port);
+                                printer.open();
+                              },
+                              child: Text("Connect"),
+
+                            ),
+                            TextButton(
+                              onPressed: () async {
+                                // portPrint(port);
+                                // printer.testQuery();
+                                final port = ArtemisSerialPort('COM4');
+
+                                final queue = SerialPrintQueue(
+                                  QueuePortAdapter(port),
+                                  timeout: const Duration(seconds: 2),
+                                  quietWindow: const Duration(milliseconds: 150),
+                                  stripFraming: true,        // strip STX/ETX on RX if they’re present
+                                  addCrlfOnSend: true,       // add \r\n to text you send via printText(...)
+                                  addFramingOnSend: false,   // set true if your device requires STX/ETX on TX
+                                );
+
+// Send a command (with CRLF if enabled)
+                                final res = await queue.printText('AV');
+                                log('status=${res.status}, text=${res.text}');
                               },
                               child: Text("port print"),
                             ),
                             Builder(
                               builder: (BuildContext context) {
-                                final listenable = ArtemisPortPrint.statusListenable(port);
-                                if (listenable == null) {
-                                  log("listenable is null");
-                                  return SizedBox();
-                                }
+                                final listenable = printer.statusListenable;
                                 return ValueListenableBuilder<DeviceStatus>(
                                   valueListenable: listenable,
                                   builder: (context, status, _) {
@@ -178,52 +203,52 @@ class _MyHomePageState extends State<MyHomePage> {
                                 );
                               },
                             ),
-                            ValueListenableBuilder(
-                              valueListenable: port.status,
-                              builder: (context, PrinterStatus status, _) {
-                                switch (status) {
-                                  case PrinterStatus.offline:
-                                    return TextButton(
-                                      onPressed: () {
-                                        port.connect();
-
-                                      },
-                                      child: Text("Connect"),
-
-                                    );
-                                  case PrinterStatus.ready:
-                                    return TextButton(
-                                      onPressed: () {
-                                        port.disconnect();
-                                      },
-                                      child: Text("Disconnect"),
-                                    );
-                                  case PrinterStatus.printing:
-                                    return const Text("🖨 Printing...");
-                                  case PrinterStatus.waiting:
-                                    return const Text("⌛ Waiting response...");
-                                  case PrinterStatus.error:
-                                    return const Text("⚠️ Error");
-                                  case PrinterStatus.connecting:
-                                    return const Text("🔄 Connecting...");
-                                }
-                              },
-
-                            ),
+                            // ValueListenableBuilder(
+                            //   valueListenable: port.status,
+                            //   builder: (context, PrinterStatus status, _) {
+                            //     switch (status) {
+                            //       case PrinterStatus.offline:
+                            //         return TextButton(
+                            //           onPressed: () {
+                            //             port.connect();
+                            //
+                            //           },
+                            //           child: Text("Connect"),
+                            //
+                            //         );
+                            //       case PrinterStatus.ready:
+                            //         return TextButton(
+                            //           onPressed: () {
+                            //             port.disconnect();
+                            //           },
+                            //           child: Text("Disconnect"),
+                            //         );
+                            //       case PrinterStatus.printing:
+                            //         return const Text("🖨 Printing...");
+                            //       case PrinterStatus.waiting:
+                            //         return const Text("⌛ Waiting response...");
+                            //       case PrinterStatus.error:
+                            //         return const Text("⚠️ Error");
+                            //       case PrinterStatus.connecting:
+                            //         return const Text("🔄 Connecting...");
+                            //     }
+                            //   },
+                            //
+                            // ),
                           ],
                         ),
                         trailing: port.getWidget,
                         children: [
-                          CardListTile('Description', port.description, port),
-                          CardListTile('Transport', port.transport.toTransport(), port),
-                          CardListTile('USB Bus', port.busNumber?.toPadded(), port),
-                          CardListTile('USB Device', port.deviceNumber?.toPadded(), port),
-                          CardListTile('Vendor ID', port.vendorId?.toHex(), port),
-                          CardListTile('Product ID', port.productId?.toHex(), port),
-                          CardListTile('Manufacturer', port.manufacturer, port),
-                          CardListTile('Product Name', port.productName, port),
-                          CardListTile('Serial Number', port.serialNumber, port),
-                          CardListTile('MAC Address', port.macAddress, port),
+                          // CardListTile('Description', port.description, port),
+                          // CardListTile('Transport', port.transport.toTransport(), port),
+                          // CardListTile('USB Bus', port.busNumber?.toPadded(), port),
+                          // CardListTile('USB Device', port.deviceNumber?.toPadded(), port),
+                          // CardListTile('Vendor ID', port.vendorId?.toHex(), port),
+                          // CardListTile('Product ID', port.productId?.toHex(), port),
+                          // CardListTile('Manufacturer', port.manufacturer, port),
+                          // CardListTile('Product Name', port.productName, port),
+                          // CardListTile('Serial Number', port.serialNumber, port),
+                          // CardListTile('MAC Address', port.macAddress, port),
                         ],
                       );
                     },
@@ -241,7 +266,7 @@ class _MyHomePageState extends State<MyHomePage> {
 class CardListTile extends StatelessWidget {
   final String name;
   final String? value;
-  final SerialPort? port;
+  final ArtemisPortPrint? port;
 
   const CardListTile(this.name, this.value, this.port, {super.key});
 

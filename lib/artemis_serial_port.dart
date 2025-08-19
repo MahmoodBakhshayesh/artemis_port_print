@@ -1,12 +1,15 @@
 // serial_port_plus.dart
 import 'dart:async';
+import 'dart:developer';
 import 'dart:typed_data';
 import 'dart:convert';
 import 'package:artemis_port_print/artemis_port_print.dart';
 import 'package:artemis_port_print/util.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 
 import 'enums.dart';
+import 'status_class.dart';
 export 'package:flutter_libserialport/flutter_libserialport.dart';
 
 class FrameParser {
@@ -79,6 +82,10 @@ class ArtemisSerialPort implements SerialPort {
   final FrameParser _parser;
   SerialDeviceConfig? serialDeviceConfig;
 
+  final _status = ValueNotifier<PrinterStatus>(PrinterStatus.offline);
+
+  ValueNotifier<PrinterStatus> get status => _status;
+
   SerialPortReader? _reader;
   final _dataCtrl = StreamController<DataReceive>.broadcast();
 
@@ -92,11 +99,28 @@ class ArtemisSerialPort implements SerialPort {
   ArtemisSerialPort setConfig(ArtemisPortPrintSetting config) {
     serialDeviceConfig = config.getConfig;
     return this;
-
   }
 
   Future<PrintResult> printData(String data) {
     return ArtemisPortPrint.print(this, data);
+  }
+
+  Future<void> connect() async {
+    status.value = PrinterStatus.connecting;
+    await ArtemisPortPrint.open(this);
+    status.value = PrinterStatus.ready;
+  }
+
+  Future<void> disconnect() async {
+    status.value = PrinterStatus.connecting;
+    await ArtemisPortPrint.close(this);
+    status.value = PrinterStatus.offline;
+  }
+
+  Future<void> queryStatus() async {
+    // final res = await printDataRaw(Uint8List.fromList([0x10, 0x04, 0x04]));
+    final status = await ArtemisPortPrint.testQuery(this);
+    log(status.toString());
   }
 
   // your previous function turned into a queued, returning call
@@ -284,6 +308,26 @@ class ArtemisSerialPort implements SerialPort {
 
   @override
   int get address => _inner.address;
+
+  Widget get getWidget => ValueListenableBuilder(
+    valueListenable: status,
+    builder: (context, PrinterStatus status, _) {
+      switch (status) {
+        case PrinterStatus.offline:
+          return const Text("🔴 Offline");
+        case PrinterStatus.ready:
+          return const Text("🟢 Ready");
+        case PrinterStatus.printing:
+          return const Text("🖨 Printing...");
+        case PrinterStatus.waiting:
+          return const Text("⌛ Waiting response...");
+        case PrinterStatus.error:
+          return const Text("⚠️ Error");
+        case PrinterStatus.connecting:
+          return const Text("🔄 Connecting...");
+      }
+    },
+  );
 
   // Note: static members (availablePorts, lastError) are accessed via SerialPort.
 }

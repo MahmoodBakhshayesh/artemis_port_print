@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:developer';
 
 import 'package:artemis_port_print/artemis_port_print.dart';
+import 'package:artemis_port_print/enums.dart';
+import 'package:artemis_port_print/status_class.dart';
 import 'package:artemis_port_print/util.dart';
 import 'package:flutter/material.dart';
 
@@ -73,15 +75,13 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void testQuery() async {
     // Example: DLE EOT 4 (0x10 0x04 0x04) — ask paper roll status.
-
-
-
   }
 
-  Future<PrintResult> portPrint(ArtemisSerialPort port) async {
-    final result = await port.printData("AV");
-    log(result.status.name);
-    log(result.text??'');
+  Future<dynamic> portPrint(ArtemisSerialPort port) async {
+    final result = await port.printData("SQ");
+    // final result = await port.queryStatus();
+    log(result.toString());
+    // log(result.text??'');
     return result;
   }
 
@@ -109,56 +109,131 @@ class _MyHomePageState extends State<MyHomePage> {
             child: ListView(
               children: [
                 for (final address in availablePorts)
-                  Builder(builder: (context) {
-                    final port = ArtemisPortPrint.createSerialPort(address,config: ArtemisPortPrintSetting(portName: address,));
-                    return ExpansionTile(
-                      leading: IconButton(onPressed: () async {
-                        // ArtemisPortPrint.log(port, "AV");
-//
-//                         final response = await ArtemisPortPrint.sendAndWait(
-//                           port,
-//                           request: [0x10, 0x04, 0x04], // e.g., ESC/POS DLE EOT 4 (paper status)
-//                           timeout: const Duration(seconds: 1),
-//                         );
-//
-// // Decide: timeout/no-response
-//                         if (response.isEmpty) {
-//                           // handle no response
-//                           log("no response");
-//                         } else {
-//                           log("parse response");
-//                           // parse response bytes
-//                         }
-//                         await ArtemisPortPrint.printBytesToCom(portName: 'COM3', bytes:utf8.encode("AV"));
-//                       testQuery();
-                      print(port);
-                      // SerialProbe().test6();
+                  Builder(
+                    builder: (context) {
+                      final port = ArtemisPortPrint.createSerialPort(address, config: ArtemisPortPrintSetting(portName: address));
+                      return ExpansionTile(
+                        leading: IconButton(
+                          onPressed: () async {
+                            // ArtemisPortPrint.log(port, "AV");
+                            //
+                            //                         final response = await ArtemisPortPrint.sendAndWait(
+                            //                           port,
+                            //                           request: [0x10, 0x04, 0x04], // e.g., ESC/POS DLE EOT 4 (paper status)
+                            //                           timeout: const Duration(seconds: 1),
+                            //                         );
+                            //
+                            // // Decide: timeout/no-response
+                            //                         if (response.isEmpty) {
+                            //                           // handle no response
+                            //                           log("no response");
+                            //                         } else {
+                            //                           log("parse response");
+                            //                           // parse response bytes
+                            //                         }
+                            //                         await ArtemisPortPrint.printBytesToCom(portName: 'COM3', bytes:utf8.encode("AV"));
+                            //                       testQuery();
+                            // portPrint(port);
+                            port.queryStatus();
+                            // SerialProbe().test6();
+                          },
+                          icon: Icon(Icons.home),
+                        ),
+                        title: Row(
+                          children: [
+                            Text(address),
+                            TextButton(
+                              onPressed: () {
+                                portPrint(port);
+                              },
+                              child: Text("port print"),
+                            ),
+                            Builder(
+                              builder: (BuildContext context) {
+                                final listenable = ArtemisPortPrint.statusListenable(port);
+                                if (listenable == null) {
+                                  log("listenable is null");
+                                  return SizedBox();
+                                }
+                                return ValueListenableBuilder<DeviceStatus>(
+                                  valueListenable: listenable,
+                                  builder: (context, status, _) {
+                                    switch (status.state) {
+                                      case StatusState.online:
+                                        return const Text('🟢 Ready');
+                                      case StatusState.busy:
+                                        return const Text('🖨 Printing…');
+                                      case StatusState.paperOut:
+                                        return const Text('📄❌ Paper out');
+                                      case StatusState.paperJam:
+                                        return const Text('🧩 Paper jam');
+                                      case StatusState.printHeadLifted:
+                                        return const Text('🔧 Head lifted');
+                                      case StatusState.offline:
+                                        return const Text('🔴 Offline');
+                                      case StatusState.unknown:
+                                        return Text('❔ ${status.desc}');
+                                    }
+                                  },
+                                );
+                              },
+                            ),
+                            ValueListenableBuilder(
+                              valueListenable: port.status,
+                              builder: (context, PrinterStatus status, _) {
+                                switch (status) {
+                                  case PrinterStatus.offline:
+                                    return TextButton(
+                                      onPressed: () {
+                                        port.connect();
 
-                      }, icon: Icon(Icons.home)),
-                      title: Text(address),
-                      children: [
-                        CardListTile('Description', port.description,port),
-                        CardListTile('Transport', port.transport.toTransport(),port),
-                        CardListTile('USB Bus', port.busNumber?.toPadded(),port),
-                        CardListTile('USB Device', port.deviceNumber?.toPadded(),port),
-                        CardListTile('Vendor ID', port.vendorId?.toHex(),port),
-                        CardListTile('Product ID', port.productId?.toHex(),port),
-                        CardListTile('Manufacturer', port.manufacturer,port),
-                        CardListTile('Product Name', port.productName,port),
-                        CardListTile('Serial Number', port.serialNumber,port),
-                        CardListTile('MAC Address', port.macAddress,port),
-                      ],
-                    );
-                  }),
+                                      },
+                                      child: Text("Connect"),
+
+                                    );
+                                  case PrinterStatus.ready:
+                                    return TextButton(
+                                      onPressed: () {
+                                        port.disconnect();
+                                      },
+                                      child: Text("Disconnect"),
+                                    );
+                                  case PrinterStatus.printing:
+                                    return const Text("🖨 Printing...");
+                                  case PrinterStatus.waiting:
+                                    return const Text("⌛ Waiting response...");
+                                  case PrinterStatus.error:
+                                    return const Text("⚠️ Error");
+                                  case PrinterStatus.connecting:
+                                    return const Text("🔄 Connecting...");
+                                }
+                              },
+
+                            ),
+                          ],
+                        ),
+                        trailing: port.getWidget,
+                        children: [
+                          CardListTile('Description', port.description, port),
+                          CardListTile('Transport', port.transport.toTransport(), port),
+                          CardListTile('USB Bus', port.busNumber?.toPadded(), port),
+                          CardListTile('USB Device', port.deviceNumber?.toPadded(), port),
+                          CardListTile('Vendor ID', port.vendorId?.toHex(), port),
+                          CardListTile('Product ID', port.productId?.toHex(), port),
+                          CardListTile('Manufacturer', port.manufacturer, port),
+                          CardListTile('Product Name', port.productName, port),
+                          CardListTile('Serial Number', port.serialNumber, port),
+                          CardListTile('MAC Address', port.macAddress, port),
+                        ],
+                      );
+                    },
+                  ),
               ],
             ),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        child: Icon(Icons.refresh),
-        onPressed: initPorts,
-      ),
+      floatingActionButton: FloatingActionButton(child: Icon(Icons.refresh), onPressed: initPorts),
     );
   }
 }
@@ -168,18 +243,12 @@ class CardListTile extends StatelessWidget {
   final String? value;
   final SerialPort? port;
 
-  const CardListTile(this.name, this.value,this.port, {super.key});
+  const CardListTile(this.name, this.value, this.port, {super.key});
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: ListTile(
-        title: Text(value ?? 'N/A'),
-        subtitle: Text(name),
-        onTap: (){
-
-        },
-      ),
+      child: ListTile(title: Text(value ?? 'N/A'), subtitle: Text(name), onTap: () {}),
     );
   }
 }

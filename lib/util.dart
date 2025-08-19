@@ -127,18 +127,6 @@ class SerialPortBaseDart {
     // Use flow control in SerialPortConfig instead (none / rtsCts / dtrDsr).
 
 
-    final parser = FrameParser();
-
-    // reader.stream.listen((Uint8List chunk) {
-    //   final msgs = parser.feed(chunk);
-    //   for (final msg in msgs) {
-    //     final text = String.fromCharCodes(msg);
-    //     print('Received frame: "$text" (hex: ${msg.map((b)=>b.toRadixString(16)).join(" ")})');
-    //
-    //     // Here call your onReceived / stream event
-    //     onReceived(DataReceive(text: text, bytes: msg));
-    //   }
-    // });
     // Start reader
     _reader = SerialPortReader(_port);
     _reader!.stream.listen(
@@ -548,6 +536,10 @@ class SerialPrintQueue {
   /// Enqueue a text print (sends as UTF-8 code units).
   Future<PrintResult> printText(String data) {
     return enqueue(Uint8List.fromList(utf8.encode(data)));
+  }
+  /// Enqueue a text print (sends as UTF-8 code units).
+  Future<PrintResult> printBytes(Uint8List bytes) {
+    return enqueue(bytes);
   }
 
   /// Enqueue raw bytes to send; returns the classified result.

@@ -1,3 +1,14 @@
+enum PrinterStatus {
+  offline,   // not connected / closed
+  connecting, // opening port
+  ready,     // port open, idle
+  printing,  // sending data
+  waiting,   // sent, waiting for response
+  error,     // error on port or bad response
+}
+
+
+
 enum PrintType {
   aea,
   zpl,

@@ -2,7 +2,7 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 
-import 'artemis_serial_port.dart';
+import '../artemis_serial_port.dart';
 
 enum StatusState { online, offline, printHeadLifted, busy, unknown, paperOut, paperJam }
 
@@ -252,46 +252,46 @@ class StatusManager {
   }
 }
 
-
-class AeaSequencer {
-  final ArtemisSerialPort port; // your wrapper
-  final StatusManager statusMgr;
-
-  AeaSequencer(this.port, this.statusMgr);
-
-  /// Runs the AEA bootstrap/status sequence in order.
-  /// Returns the final status snapshot.
-  Future<DeviceStatus> run() async {
-    // MX
-    await _sendAndUpdate("MX");
-
-    // UG#GID
-    await _sendAndUpdate("UG#GID");
-
-    // EP#AIRLINEID=GID#HARDCODE=HDC#UNSOL=Y
-    await _sendAndUpdate("EP#AIRLINEID=GID#HARDCODE=HDC#UNSOL=Y");
-
-    // UC#999
-    await _sendAndUpdate("UC#999");
-
-    // AV
-    await _sendAndUpdate("AV");
-
-    // PV
-    await _sendAndUpdate("PV");
-
-    // SQ
-    await _sendAndUpdate("SQ", isSqni: true); // mark as unsolicited/status-query if needed
-
-    return statusMgr.status;
-  }
-
-  Future<void> _sendAndUpdate(String cmd, {bool isSqni = false}) async {
-    final res = await port.printData(cmd);
-    // Prefer decoded text; if null, try bytes as ASCII.
-    final text = res.text ?? (res.bytes != null ? String.fromCharCodes(res.bytes!) : '');
-    log("_sendAndUpdate $cmd ==> ${text}");
-
-    statusMgr.updateFrom(text, sqni: isSqni);
-  }
-}
+//
+// class AeaSequencer {
+//   final ArtemisSerialPort port; // your wrapper
+//   final StatusManager statusMgr;
+//
+//   AeaSequencer(this.port, this.statusMgr);
+//
+//   /// Runs the AEA bootstrap/status sequence in order.
+//   /// Returns the final status snapshot.
+//   Future<DeviceStatus> run() async {
+//     // MX
+//     await _sendAndUpdate("MX");
+//
+//     // UG#GID
+//     await _sendAndUpdate("UG#GID");
+//
+//     // EP#AIRLINEID=GID#HARDCODE=HDC#UNSOL=Y
+//     await _sendAndUpdate("EP#AIRLINEID=GID#HARDCODE=HDC#UNSOL=Y");
+//
+//     // UC#999
+//     await _sendAndUpdate("UC#999");
+//
+//     // AV
+//     await _sendAndUpdate("AV");
+//
+//     // PV
+//     await _sendAndUpdate("PV");
+//
+//     // SQ
+//     await _sendAndUpdate("SQ", isSqni: true); // mark as unsolicited/status-query if needed
+//
+//     return statusMgr.status;
+//   }
+//
+//   Future<void> _sendAndUpdate(String cmd, {bool isSqni = false}) async {
+//     final res = await port.printData(cmd);
+//     // Prefer decoded text; if null, try bytes as ASCII.
+//     final text = res.text ?? (res.bytes != null ? String.fromCharCodes(res.bytes!) : '');
+//     log("_sendAndUpdate $cmd ==> ${text}");
+//
+//     statusMgr.updateFrom(text, sqni: isSqni);
+//   }
+// }

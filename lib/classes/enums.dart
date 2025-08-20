@@ -8,6 +8,8 @@ enum PrinterStatus {
 }
 
 
+enum PrintStatus { ok, error, unknown, timeout }
+enum PortStatus { closed, opening, open, closing, error }
 
 enum PrintType {
   aea,

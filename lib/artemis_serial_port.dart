@@ -3,8 +3,6 @@ import 'dart:async';
 import 'dart:developer';
 import 'dart:typed_data';
 import 'dart:convert';
-import 'package:artemis_port_print/artemis_port_print.dart';
-import 'package:artemis_port_print/util.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 

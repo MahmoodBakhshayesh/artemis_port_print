@@ -1,13 +1,6 @@
 import 'dart:convert';
 import 'dart:developer';
-
-import 'package:artemis_port_print/artemis_port_print.dart';
-import 'package:artemis_port_print/artemis_serial_port.dart';
-import 'package:artemis_port_print/classes/enums.dart';
-import 'package:artemis_port_print/classes/status_class.dart';
-// import 'package:artemis_port_print/enums.dart';
-// import 'package:artemis_port_print/status_class.dart';
-import 'package:artemis_port_print/util.dart';
+import 'package:artemis_port_util/artemis_port_util.dart';
 import 'package:flutter/material.dart';
 
 void main() {
@@ -65,7 +58,7 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   var availablePorts = [];
-  List<ArtemisPortPrinter> printers = [];
+  List<ArtemisPortDevice> printers = [];
 
   @override
   void initState() {
@@ -74,8 +67,8 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void initPorts() {
-    setState(() => availablePorts = ArtemisPortPrint.getPorts);
-    setState(() => printers = ArtemisPortPrint.getPorts.map((a)=>ArtemisPortPrinter(portName: a,)).toList());
+    setState(() => availablePorts = ArtemisPortUtil.getPorts);
+    setState(() => printers = ArtemisPortUtil.getPorts.map((a)=>ArtemisPortDevice(portName: a,config: ArtemisPortDeviceSetting(portName: a,baudRate: BaudRate.br_9600,handshake: Handshake.none),)).toList());
   }
 
   void testQuery() async {
@@ -113,12 +106,12 @@ class _MyHomePageState extends State<MyHomePage> {
           Expanded(
             child: ListView(
               children: [
-                ...printers.map((printer){
-                  final port = printer.port;
+                ...printers.map((portDevice){
+                  final port = portDevice.portName;
                   return  ExpansionTile(
                     leading: IconButton(
                       onPressed: () async {
-                        printer.connect();
+                        portDevice.asPrinter.connect();
                         // ArtemisPortPrint.log(port, "AV");
                         //
                         //                         final response = await ArtemisPortPrint.sendAndWait(
@@ -145,20 +138,40 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                     title: Row(
                       children: [
-                        Text(printer.portName),
+                        Text(portDevice.portName),
                         TextButton(
                           onPressed: () {
                             // portPrint(port);
 
-                            printer.testQuery();
+                            portDevice.asPrinter.testQuery();
                           },
                           child: Text("port print"),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            try {
+                              log("trying to se ${portDevice.portName} as barcode reader");
+                              final reader = ArtemisPortBarcodeListener( onData: (String d) {
+                                // log("barcode scanned ${d}");
+                              },
+                                  config: ArtemisPortDeviceSetting(portName: portDevice.portName,baudRate: BaudRate.br_9600,handshake: Handshake.none),
+                                  portName: portDevice.portName);
+                              reader.open();
+                              reader.startListening();
+                              reader.onBarcode.listen((d) {
+                                log("barcode scanned ${d}");
+                              });
+                            }catch(e){
+                              log("E $e");
+                            }
+                          },
+                          child: Text("set as br"),
                         ),
 
 
                         Builder(
                           builder: (BuildContext context) {
-                            final listenable = printer.statusListenable;
+                            final listenable = portDevice.asPrinter.statusListenable;
 
                             return ValueListenableBuilder<DeviceStatus>(
                               valueListenable: listenable,
@@ -219,7 +232,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                     trailing: Builder(
                       builder: (BuildContext context) {
-                        final listenable = port.portStatus;
+                        final listenable = portDevice.asPrinter.portStatusListenable;
 
                         return ValueListenableBuilder<PortStatus>(
                           valueListenable: listenable,
@@ -265,7 +278,7 @@ class CardListTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: ListTile(title: Text(value ?? 'N/A'), subtitle: Text(name), onTap: () {}),
+      child: ListTile(title: Text("value" ?? 'N/A'), subtitle: Text(name), onTap: () {}),
     );
   }
 }

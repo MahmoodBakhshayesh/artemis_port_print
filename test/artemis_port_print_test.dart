@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:artemis_port_print/artemis_port_print.dart';
 
 void main() {
   // test('adds one to input values', () {

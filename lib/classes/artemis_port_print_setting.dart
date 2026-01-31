@@ -1,7 +1,7 @@
 import 'enums.dart';
 import 'serial_device_config.dart';
 
-class ArtemisPortPrintSetting {
+class ArtemisPortDeviceSetting {
   PrintType printType;
   ConnectionType connectionType;
   String portName;
@@ -19,7 +19,7 @@ class ArtemisPortPrintSetting {
   int readTimeOut;
   int writeTimoOut;
 
-  ArtemisPortPrintSetting({
+  ArtemisPortDeviceSetting({
     this.printType = PrintType.aea,
     this.connectionType = ConnectionType.com,
     required this.portName,

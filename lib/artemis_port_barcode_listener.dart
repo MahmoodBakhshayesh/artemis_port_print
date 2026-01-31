@@ -1,28 +1,35 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
-
-class ArtemisPortBarcodeListener {
-  final String portName;
+import 'classes/artemis_port_device.dart';
+class ArtemisPortBarcodeListener extends ArtemisPortDevice{
   late final SerialPort _port;
   SerialPortReader? _reader;
   final _controller = StreamController<String>.broadcast();
+  final void Function(String data)? onData;
   List<int> _buffer = [];
 
-  ArtemisPortBarcodeListener(this.portName) {
+  ArtemisPortBarcodeListener({required super.portName,super.config,super.enableLogging,  this.onData}) {
     _port = SerialPort(portName);
   }
 
   Stream<String> get onBarcode => _controller.stream;
+  Timer? _flushTimer;
 
   bool open() {
+
     if (_port.isOpen) {
+      log("already open");
       return true;
+
     }
     if(!_port.openRead()){
       _controller.addError('Failed to open port $portName. Check permissions or if the port is in use.');
+      log("Failed to open port $portName. Check permissions or if the port is in use.");
       return false;
     }
+    log("already open ok");
     return true;
   }
 
@@ -45,20 +52,26 @@ class ArtemisPortBarcodeListener {
         return;
       }
     }
+    log("should start listen");
     _reader = SerialPortReader(_port);
     _reader!.stream.listen((data) {
+      // Reset idle timer
       _buffer.addAll(data);
-      // Barcode scanners often terminate with a newline or carriage return.
-      // We'll check for newline (\n, ASCII 10) and carriage return (\r, ASCII 13).
-      if (_buffer.contains(10) || _buffer.contains(13)) {
-        // We assume UTF8 encoding. Some scanners might use other encodings.
-        final barcode = utf8.decode(_buffer, allowMalformed: true).trim();
+
+      // log("data recieved");
+      _flushTimer?.cancel();
+      _flushTimer = Timer(const Duration(milliseconds: 30), () {
+        final barcode = ascii.decode(_buffer).trimRight();
+        // log("barcode is $barcode");
         if (barcode.isNotEmpty) {
+          // log("adding to stream $barcode");
+          onData?.call(barcode);
           _controller.add(barcode);
         }
         _buffer.clear();
-      }
+      });
     }, onError: (error) {
+      log("on error listen");
       _controller.addError(error);
     });
   }

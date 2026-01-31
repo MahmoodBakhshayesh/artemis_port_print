@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 
+import 'artemis_port_device.dart';
 import 'artemis_port_print_setting.dart';
 import 'enums.dart';
 import 'print_result.dart';
@@ -8,19 +9,17 @@ import 'serial_port_handler.dart';
 import 'serial_print_queue.dart';
 import 'status_class.dart';
 
-class ArtemisPortPrinter {
-  final String portName;
-  final ArtemisPortPrintSetting settings;
-  final bool enableLogging;
+class ArtemisPortPrinter extends ArtemisPortDevice{
+  // final ArtemisPortDeviceSetting settings;
 
   late final SerialPortHandler _handler;
   late final SerialPrintQueue _queue;
 
   ArtemisPortPrinter({
-    required this.portName,
-    ArtemisPortPrintSetting? config,
-    this.enableLogging = false,
-  }) : settings = config ?? ArtemisPortPrintSetting(portName: portName) {
+    required super.portName,
+    super.config,
+    super.enableLogging = false,
+  }) {
     _handler = SerialPortHandler(
       portName: portName,
       config: settings.getConfig,

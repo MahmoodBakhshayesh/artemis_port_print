@@ -1,9 +1,15 @@
-library artemis_port_print;
+library artemis_port_util;
 
 import 'artemis_serial_port.dart';
 
 
-
+export 'artemis_port_barcode_listener.dart';
+export 'package:artemis_port_util/classes/artemis_port_device.dart';
+export 'package:artemis_port_util/classes/artemis_port_printer.dart';
+export 'package:artemis_port_util/classes/artemis_port_print_setting.dart';
+export 'package:artemis_port_util/classes/enums.dart';
+export 'package:artemis_port_util/classes/status_class.dart';
+export 'package:artemis_port_util/artemis_serial_port.dart';
 export 'classes/artemis_port_printer.dart';
 // import 'dart:async';
 // import 'dart:developer';
@@ -27,8 +33,8 @@ export 'classes/artemis_port_printer.dart';
 // }
 
 
-class ArtemisPortPrint {
-  ArtemisPortPrint._();
+class ArtemisPortUtil {
+  ArtemisPortUtil._();
 
   static List<String> get getPorts => SerialPort.availablePorts;
 }

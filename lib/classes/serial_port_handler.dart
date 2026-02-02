@@ -1,13 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
-import 'package:libserialport/libserialport.dart';
-
-import 'enums.dart';
+import '../artemis_port_util.dart';
 import 'frame_parser.dart';
 import 'serial_device_config.dart';
-import 'status_class.dart';
 
 // Match your existing types
 class DataReceive {

@@ -24,6 +24,20 @@ class ArtemisPortDevice {
 
   ArtemisPortPrinter get asPrinter => ArtemisPortPrinter(portName: portName,config: settings,enableLogging: enableLogging);
   ArtemisPortBarcodeListener get asBarcodeReader => ArtemisPortBarcodeListener(portName: portName,config: settings,enableLogging: enableLogging);
+
+  Map<String, dynamic> toJson() {
+    return {
+      'portName': portName,
+      'settings': settings.toJson(),
+      'enableLogging': enableLogging,
+    };
+  }
+
+  factory ArtemisPortDevice.fromJson(Map<String, dynamic> json) {
+    return ArtemisPortDevice(
+      portName: json['portName'],
+      config: ArtemisPortDeviceSetting.fromJson(json['settings']),
+      enableLogging: json['enableLogging'],
+    );
+  }
 }
-
-

@@ -51,4 +51,46 @@ class ArtemisPortDeviceSetting {
     rtsEnable: rts,
     flowControl: handshake.value,
   );
+
+  Map<String, dynamic> toJson() {
+    return {
+      'printType': printType.toString().split('.').last,
+      'connectionType': connectionType.toString().split('.').last,
+      'portName': portName,
+      'baudRate': baudRate.toString().split('.').last,
+      'dataBits': dataBits.toString().split('.').last,
+      'parity': parity.toString().split('.').last,
+      'stopBits': stopBits.toString().split('.').last,
+      'protocolMode': protocolMode.toString().split('.').last,
+      'receivedBytesThreshold': receivedBytesThreshold,
+      'handshake': handshake.toString().split('.').last,
+      'dtr': dtr,
+      'rts': rts,
+      'logoBinary': logoBinary,
+      'resetBin': resetBin,
+      'readTimeOut': readTimeOut,
+      'writeTimoOut': writeTimoOut,
+    };
+  }
+
+  factory ArtemisPortDeviceSetting.fromJson(Map<String, dynamic> json) {
+    return ArtemisPortDeviceSetting(
+      printType: PrintType.values.byName(json['printType']),
+      connectionType: ConnectionType.values.byName(json['connectionType']),
+      portName: json['portName'],
+      baudRate: BaudRate.values.byName(json['baudRate']),
+      dataBits: DataBits.values.byName(json['dataBits']),
+      parity: Parity.values.byName(json['parity']),
+      stopBits: StopBits.values.byName(json['stopBits']),
+      protocolMode: ProtocolMode.values.byName(json['protocolMode']),
+      receivedBytesThreshold: json['receivedBytesThreshold'],
+      handshake: Handshake.values.byName(json['handshake']),
+      dtr: json['dtr'],
+      rts: json['rts'],
+      logoBinary: json['logoBinary'],
+      resetBin: json['resetBin'],
+      readTimeOut: json['readTimeOut'],
+      writeTimoOut: json['writeTimoOut'],
+    );
+  }
 }

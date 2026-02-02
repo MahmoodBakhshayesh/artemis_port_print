@@ -152,6 +152,7 @@ class _MyHomePageState extends State<MyHomePage> {
                             try {
                               log("trying to se ${portDevice.portName} as barcode reader");
                               final reader = ArtemisPortBarcodeListener( onData: (String d) {
+
                                 // log("barcode scanned ${d}");
                               },
                                   config: ArtemisPortDeviceSetting(portName: portDevice.portName,baudRate: BaudRate.br_9600,handshake: Handshake.none),

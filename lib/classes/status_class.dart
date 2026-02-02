@@ -16,6 +16,7 @@ class DeviceStatus {
   bool powerOff = false;
   bool unknown = false;
   bool headLifted = false;
+
   bool maxWeightExceeded = false;
   String desc = 'Unknown';
   StatusState state = StatusState.unknown;

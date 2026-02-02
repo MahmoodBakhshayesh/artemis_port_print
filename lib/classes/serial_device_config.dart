@@ -27,4 +27,36 @@ class SerialDeviceConfig {
     this.writeTimeout = const Duration(milliseconds: 500),
     this.protocolMode = ProtocolMode.framed,
   });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'portName': portName,
+      'baudRate': baudRate,
+      'dataBits': dataBits,
+      'parity': parity,
+      'stopBits': stopBits,
+      'dtrEnable': dtrEnable,
+      'rtsEnable': rtsEnable,
+      'flowControl': flowControl,
+      'readTimeout': readTimeout.inMilliseconds,
+      'writeTimeout': writeTimeout.inMilliseconds,
+      'protocolMode': protocolMode.toString().split('.').last,
+    };
+  }
+
+  factory SerialDeviceConfig.fromJson(Map<String, dynamic> json) {
+    return SerialDeviceConfig(
+      portName: json['portName'],
+      baudRate: json['baudRate'],
+      dataBits: json['dataBits'],
+      parity: json['parity'],
+      stopBits: json['stopBits'],
+      dtrEnable: json['dtrEnable'],
+      rtsEnable: json['rtsEnable'],
+      flowControl: json['flowControl'],
+      readTimeout: Duration(milliseconds: json['readTimeout']),
+      writeTimeout: Duration(milliseconds: json['writeTimeout']),
+      protocolMode: ProtocolMode.values.byName(json['protocolMode']),
+    );
+  }
 }

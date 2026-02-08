@@ -74,17 +74,20 @@ class ArtemisPortDeviceSetting {
   }
 
   factory ArtemisPortDeviceSetting.fromJson(Map<String, dynamic> json) {
+    T enumFromString<T>(List<T> values, String value) {
+      return values.firstWhere((v) => v.toString().split('.').last.toLowerCase() == value.toLowerCase());
+    }
     return ArtemisPortDeviceSetting(
-      printType: PrintType.values.byName(json['printType']),
-      connectionType: ConnectionType.values.byName(json['connectionType']),
+      printType: enumFromString(PrintType.values, json['printType']),
+      connectionType: enumFromString(ConnectionType.values, json['connectionType']),
       portName: json['portName'],
-      baudRate: BaudRate.values.byName(json['baudRate']),
-      dataBits: DataBits.values.byName(json['dataBits']),
-      parity: Parity.values.byName(json['parity']),
-      stopBits: StopBits.values.byName(json['stopBits']),
-      protocolMode: ProtocolMode.values.byName(json['protocolMode']),
+      baudRate: enumFromString(BaudRate.values, json['baudRate']),
+      dataBits: enumFromString(DataBits.values, json['dataBits']),
+      parity: enumFromString(Parity.values, json['parity']),
+      stopBits: enumFromString(StopBits.values, json['stopBits']),
+      protocolMode: enumFromString(ProtocolMode.values, json['protocolMode']),
       receivedBytesThreshold: json['receivedBytesThreshold'],
-      handshake: Handshake.values.byName(json['handshake']),
+      handshake: enumFromString(Handshake.values, json['handshake']),
       dtr: json['dtr'],
       rts: json['rts'],
       logoBinary: json['logoBinary'],

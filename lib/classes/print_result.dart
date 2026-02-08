@@ -22,8 +22,11 @@ class PrintResult {
   }
 
   factory PrintResult.fromJson(Map<String, dynamic> json) {
+    T enumFromString<T>(List<T> values, String value) {
+      return values.firstWhere((v) => v.toString().split('.').last.toLowerCase() == value.toLowerCase());
+    }
     return PrintResult(
-      PrintStatus.values.byName(json['status']),
+      enumFromString(PrintStatus.values, json['status']),
       text: json['text'],
       bytes: json['bytes'] != null ? Uint8List.fromList(json['bytes'].cast<int>()) : null,
     );

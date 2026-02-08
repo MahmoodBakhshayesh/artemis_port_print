@@ -45,6 +45,9 @@ class SerialDeviceConfig {
   }
 
   factory SerialDeviceConfig.fromJson(Map<String, dynamic> json) {
+    T enumFromString<T>(List<T> values, String value) {
+      return values.firstWhere((v) => v.toString().split('.').last.toLowerCase() == value.toLowerCase());
+    }
     return SerialDeviceConfig(
       portName: json['portName'],
       baudRate: json['baudRate'],
@@ -56,7 +59,7 @@ class SerialDeviceConfig {
       flowControl: json['flowControl'],
       readTimeout: Duration(milliseconds: json['readTimeout']),
       writeTimeout: Duration(milliseconds: json['writeTimeout']),
-      protocolMode: ProtocolMode.values.byName(json['protocolMode']),
+      protocolMode: enumFromString(ProtocolMode.values, json['protocolMode']),
     );
   }
 }

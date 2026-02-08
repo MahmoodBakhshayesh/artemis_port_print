@@ -2,7 +2,7 @@ name: artemis_port_util
 description: "Reliable serial (COM) port printing for Flutter.
 Easily list ports, open connections, send commands, and wait for structured responses with built-in timeout handling, result classification (ok, error, unknown, timeout), and optional STX/ETX framing.
 Perfect for receipt printers, label printers, and other serial devices that require request → response communication."
-version: 0.0.2
+version: 0.0.4
 homepage: https://github.com/MahmoodBakhshayesh/artemis_port_print
 
 environment:
@@ -24,6 +24,28 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/images/
+    - assets/images/devices/
+    - assets/images/devices/ready/
+    - assets/images/devices/ready/
+    - assets/images/devices/diskError/
+    - assets/images/devices/headLifted/
+    - assets/images/devices/init/
+    - assets/images/devices/locked/
+    - assets/images/devices/maxWeightExceeded/
+    - assets/images/devices/notExist/
+    - assets/images/devices/paperJam/
+    - assets/images/devices/paperOut/
+    - assets/images/devices/printing/
+    - assets/images/devices/powerOff/
+    - assets/images/devices/configuring/
+    - assets/images/devices/ready/
+    - assets/images/devices/unknown/
 
 
   # To add assets to your package, add an assets section, like this:

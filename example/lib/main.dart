@@ -68,7 +68,16 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void initPorts() {
     setState(() => availablePorts = ArtemisPortUtil.getPorts);
-    setState(() => printers = ArtemisPortUtil.getPorts.map((a)=>ArtemisPortDevice(portName: a,config: ArtemisPortDeviceSetting(portName: a,baudRate: BaudRate.br_9600,handshake: Handshake.none),)).toList());
+    setState(
+      () => printers = ArtemisPortUtil.getPorts
+          .map(
+            (a) => ArtemisPortDevice(
+              portName: a,
+              config: ArtemisPortDeviceSetting(portName: a, baudRate: BaudRate.br_9600, handshake: Handshake.none),
+            ),
+          )
+          .toList(),
+    );
   }
 
   void testQuery() async {
@@ -106,159 +115,221 @@ class _MyHomePageState extends State<MyHomePage> {
           Expanded(
             child: ListView(
               children: [
-                ...printers.map((portDevice){
-                  final port = portDevice.portName;
-                  return  ExpansionTile(
-                    leading: IconButton(
-                      onPressed: () async {
-                        portDevice.asPrinter.connect();
-                        // ArtemisPortPrint.log(port, "AV");
-                        //
-                        //                         final response = await ArtemisPortPrint.sendAndWait(
-                        //                           port,
-                        //                           request: [0x10, 0x04, 0x04], // e.g., ESC/POS DLE EOT 4 (paper status)
-                        //                           timeout: const Duration(seconds: 1),
-                        //                         );
-                        //
-                        // // Decide: timeout/no-response
-                        //                         if (response.isEmpty) {
-                        //                           // handle no response
-                        //                           log("no response");
-                        //                         } else {
-                        //                           log("parse response");
-                        //                           // parse response bytes
-                        //                         }
-                        //                         await ArtemisPortPrint.printBytesToCom(portName: 'COM3', bytes:utf8.encode("AV"));
-                        //                       testQuery();
-                        // portPrint(port);
-                        // port.queryStatus();
-                        // SerialProbe().test6();
-                      },
-                      icon: Icon(Icons.home),
-                    ),
-                    title: Row(
-                      children: [
-                        Text(portDevice.portName),
-                        TextButton(
-                          onPressed: () {
-                            // portPrint(port);
+                ...printers
+                    .map((p) => p.asBarcodeReader)
+                    .map(
+                      (bc) => ListTile(
+                        title: Text(bc.portName),
+                        subtitle: TextButton(onPressed: () async {
+                          await bc.disconnect();
+                        }, child: Text("close")),
+                        onTap: () async {
+                          try {
+                            log("Trying to set ${bc.portName} as barcode reader");
 
-                            portDevice.asPrinter.testQuery();
-                          },
-                          child: Text("port print"),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            try {
-                              log("trying to se ${portDevice.portName} as barcode reader");
-                              final reader = ArtemisPortBarcodeListener( onData: (String d) {
+                            // Use the getter from your existing portDevice instance
 
-                                // log("barcode scanned ${d}");
-                              },
-                                  config: ArtemisPortDeviceSetting(portName: portDevice.portName,baudRate: BaudRate.br_9600,handshake: Handshake.none),
-                                  portName: portDevice.portName);
-                              reader.open();
-                              reader.startListening();
-                              reader.onBarcode.listen((d) {
-                                log("barcode scanned ${d}");
+                            // You can still configure it if needed, but it's better to do this when creating the ArtemisPortDevice
+                            // If you must reconfigure, you might need to add a method for it.
+                            // For now, let's assume the initial config is correct.
+
+                            // Listen to the status to see it change
+                            bc.connectionStatus.addListener(() {
+                              log("Reader status updated: ${bc.currentConnectionStatus}");
+                            });
+
+                            if (await bc.connect()) {
+                              // connect() is the unified method from the interface
+                              bc.startListening();
+                              bc.onBarcode.listen((d) {
+                                log("Barcode scanned: $d");
                               });
-                            }catch(e){
-                              log("E $e");
                             }
-                          },
-                          child: Text("set as br"),
-                        ),
-
-
-                        Builder(
-                          builder: (BuildContext context) {
-                            final listenable = portDevice.asPrinter.statusListenable;
-
-                            return ValueListenableBuilder<DeviceStatus>(
-                              valueListenable: listenable,
-                              builder: (context, status, _) {
-                                switch (status.state) {
-                                  case StatusState.online:
-                                    return const Text('🟢 Ready');
-                                  case StatusState.busy:
-                                    return const Text('🖨 Printing…');
-                                  case StatusState.paperOut:
-                                    return const Text('📄❌ Paper out');
-                                  case StatusState.paperJam:
-                                    return const Text('🧩 Paper jam');
-                                  case StatusState.printHeadLifted:
-                                    return const Text('🔧 Head lifted');
-                                  case StatusState.offline:
-                                    return const Text('🔴 Offline');
-                                  case StatusState.unknown:
-                                    return Text('❔ ${status.desc}');
-                                }
-                              },
-                            );
-                          },
-                        ),
-                        // ValueListenableBuilder(
-                        //   valueListenable: port.status,
-                        //   builder: (context, PrinterStatus status, _) {
-                        //     switch (status) {
-                        //       case PrinterStatus.offline:
-                        //         return TextButton(
-                        //           onPressed: () {
-                        //             port.connect();
-                        //
-                        //           },
-                        //           child: Text("Connect"),
-                        //
-                        //         );
-                        //       case PrinterStatus.ready:
-                        //         return TextButton(
-                        //           onPressed: () {
-                        //             port.disconnect();
-                        //           },
-                        //           child: Text("Disconnect"),
-                        //         );
-                        //       case PrinterStatus.printing:
-                        //         return const Text("🖨 Printing...");
-                        //       case PrinterStatus.waiting:
-                        //         return const Text("⌛ Waiting response...");
-                        //       case PrinterStatus.error:
-                        //         return const Text("⚠️ Error");
-                        //       case PrinterStatus.connecting:
-                        //         return const Text("🔄 Connecting...");
-                        //     }
-                        //   },
-                        //
-                        // ),
-                      ],
+                          } catch (e) {
+                            log("Error setting up barcode reader: $e");
+                          }
+                        },
+                        trailing: bc.icon(24),
+                      ),
                     ),
-                    trailing: Builder(
-                      builder: (BuildContext context) {
-                        final listenable = portDevice.asPrinter.portStatusListenable;
-
-                        return ValueListenableBuilder<PortStatus>(
-                          valueListenable: listenable,
-                          builder: (context, status, _) {
-                            return Text(status.name);
-
-                          },
-                        );
-                      },
-                    ),
-
-                    children: [
-                      // CardListTile('Description', port.description, port),
-                      // CardListTile('Transport', port.transport.toTransport(), port),
-                      // CardListTile('USB Bus', port.busNumber?.toPadded(), port),
-                      // CardListTile('USB Device', port.deviceNumber?.toPadded(), port),
-                      // CardListTile('Vendor ID', port.vendorId?.toHex(), port),
-                      // CardListTile('Product ID', port.productId?.toHex(), port),
-                      // CardListTile('Manufacturer', port.manufacturer, port),
-                      // CardListTile('Product Name', port.productName, port),
-                      // CardListTile('Serial Number', port.serialNumber, port),
-                      // CardListTile('MAC Address', port.macAddress, port),
-                    ],
-                  );
-                })
+                // ...printers.map((portDevice){
+                //   final port = portDevice.portName;
+                //   return  ExpansionTile(
+                //     leading: IconButton(
+                //       onPressed: () async {
+                //         portDevice.asPrinter.connect();
+                //         // ArtemisPortPrint.log(port, "AV");
+                //         //
+                //         //                         final response = await ArtemisPortPrint.sendAndWait(
+                //         //                           port,
+                //         //                           request: [0x10, 0x04, 0x04], // e.g., ESC/POS DLE EOT 4 (paper status)
+                //         //                           timeout: const Duration(seconds: 1),
+                //         //                         );
+                //         //
+                //         // // Decide: timeout/no-response
+                //         //                         if (response.isEmpty) {
+                //         //                           // handle no response
+                //         //                           log("no response");
+                //         //                         } else {
+                //         //                           log("parse response");
+                //         //                           // parse response bytes
+                //         //                         }
+                //         //                         await ArtemisPortPrint.printBytesToCom(portName: 'COM3', bytes:utf8.encode("AV"));
+                //         //                       testQuery();
+                //         // portPrint(port);
+                //         // port.queryStatus();
+                //         // SerialProbe().test6();
+                //       },
+                //       icon: Icon(Icons.home),
+                //     ),
+                //     title: Row(
+                //       children: [
+                //         Text(portDevice.portName),
+                //         TextButton(
+                //           onPressed: () {
+                //             // portPrint(port);
+                //
+                //             portDevice.asPrinter.testQuery();
+                //           },
+                //           child: Text("port print"),
+                //         ),
+                //         TextButton(
+                //           onPressed: () async {
+                //             try {
+                //               log("Trying to set ${portDevice.portName} as barcode reader");
+                //
+                //               // Use the getter from your existing portDevice instance
+                //               final reader = portDevice.asBarcodeReader;
+                //
+                //               // You can still configure it if needed, but it's better to do this when creating the ArtemisPortDevice
+                //               // If you must reconfigure, you might need to add a method for it.
+                //               // For now, let's assume the initial config is correct.
+                //
+                //               // Listen to the status to see it change
+                //               reader.connectionStatus.addListener(() {
+                //                 log("Reader status updated: ${reader.currentConnectionStatus}");
+                //               });
+                //
+                //               if (await reader.connect()) { // connect() is the unified method from the interface
+                //                 reader.startListening();
+                //                 reader.onBarcode.listen((d) {
+                //                   log("Barcode scanned: $d");
+                //                 });
+                //               }
+                //             } catch (e) {
+                //               log("Error setting up barcode reader: $e");
+                //             }
+                //
+                //           },
+                //           child: Row(
+                //             children: [
+                //               Text("set as br"),
+                //
+                //             ],
+                //           ),
+                //         ),
+                //         Builder(
+                //           builder: (BuildContext context) {
+                //             final listenable = portDevice.asBarcodeReader.statusImagePath;
+                //             log("device status ${listenable.value}");
+                //             return ValueListenableBuilder<String>(
+                //               valueListenable: listenable,
+                //               builder: (context, status, _) {
+                //                return Image.asset(status, width: 24, package: 'artemis_port_util');
+                //               },
+                //             );
+                //           },
+                //         ),
+                //         portDevice.asBarcodeReader.icon(),
+                //         Builder(
+                //           builder: (BuildContext context) {
+                //             final listenable = portDevice.asPrinter.statusListenable;
+                //
+                //             return ValueListenableBuilder<DeviceStatus>(
+                //               valueListenable: listenable,
+                //               builder: (context, status, _) {
+                //                 switch (status.state) {
+                //                   case StatusState.online:
+                //                     return const Text('🟢 Ready');
+                //                   case StatusState.busy:
+                //                     return const Text('🖨 Printing…');
+                //                   case StatusState.paperOut:
+                //                     return const Text('📄❌ Paper out');
+                //                   case StatusState.paperJam:
+                //                     return const Text('🧩 Paper jam');
+                //                   case StatusState.printHeadLifted:
+                //                     return const Text('🔧 Head lifted');
+                //                   case StatusState.offline:
+                //                     return const Text('🔴 Offline');
+                //                   case StatusState.unknown:
+                //                     return Text('❔ ${status.desc}');
+                //                 }
+                //               },
+                //             );
+                //           },
+                //         ),
+                //         // ValueListenableBuilder(
+                //         //   valueListenable: port.status,
+                //         //   builder: (context, PrinterStatus status, _) {
+                //         //     switch (status) {
+                //         //       case PrinterStatus.offline:
+                //         //         return TextButton(
+                //         //           onPressed: () {
+                //         //             port.connect();
+                //         //
+                //         //           },
+                //         //           child: Text("Connect"),
+                //         //
+                //         //         );
+                //         //       case PrinterStatus.ready:
+                //         //         return TextButton(
+                //         //           onPressed: () {
+                //         //             port.disconnect();
+                //         //           },
+                //         //           child: Text("Disconnect"),
+                //         //         );
+                //         //       case PrinterStatus.printing:
+                //         //         return const Text("🖨 Printing...");
+                //         //       case PrinterStatus.waiting:
+                //         //         return const Text("⌛ Waiting response...");
+                //         //       case PrinterStatus.error:
+                //         //         return const Text("⚠️ Error");
+                //         //       case PrinterStatus.connecting:
+                //         //         return const Text("🔄 Connecting...");
+                //         //     }
+                //         //   },
+                //         //
+                //         // ),
+                //       ],
+                //     ),
+                //     trailing: Builder(
+                //       builder: (BuildContext context) {
+                //         final listenable = portDevice.asPrinter.connectionStatus;
+                //
+                //         return ValueListenableBuilder<DeviceConnectionStatus>(
+                //           valueListenable: listenable,
+                //           builder: (context, status, _) {
+                //
+                //             return Text(status.name);
+                //           },
+                //         );
+                //       },
+                //     ),
+                //
+                //     children: [
+                //       // CardListTile('Description', port.description, port),
+                //       // CardListTile('Transport', port.transport.toTransport(), port),
+                //       // CardListTile('USB Bus', port.busNumber?.toPadded(), port),
+                //       // CardListTile('USB Device', port.deviceNumber?.toPadded(), port),
+                //       // CardListTile('Vendor ID', port.vendorId?.toHex(), port),
+                //       // CardListTile('Product ID', port.productId?.toHex(), port),
+                //       // CardListTile('Manufacturer', port.manufacturer, port),
+                //       // CardListTile('Product Name', port.productName, port),
+                //       // CardListTile('Serial Number', port.serialNumber, port),
+                //       // CardListTile('MAC Address', port.macAddress, port),
+                //     ],
+                //   );
+                // })
               ],
             ),
           ),

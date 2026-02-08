@@ -7,6 +7,21 @@ enum PrinterStatus {
   error,     // error on port or bad response
 }
 
+enum BarcodeReaderStatus {
+  disconnected,
+  connecting,
+  connected,
+  listening,
+  error,
+}
+
+enum DeviceConnectionStatus {
+  disconnected,
+  connecting,
+  connected,
+  error,
+}
+
 
 enum PrintStatus { ok, error, unknown, timeout }
 enum PortStatus { closed, opening, open, closing, error }

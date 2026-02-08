@@ -16,17 +16,18 @@ class DeviceStatus {
   bool powerOff = false;
   bool unknown = false;
   bool headLifted = false;
-
   bool maxWeightExceeded = false;
   String desc = 'Unknown';
   StatusState state = StatusState.unknown;
 
+  DeviceStatus();
   @override
   String toString() => 'DeviceStatus(state: $state, desc: $desc, ready:$ready, paperOut:$paperOut, paperJam:$paperJam, powerOff:$powerOff, headLifted:$headLifted, unknown:$unknown)';
 
   DeviceStatus clone() {
     final d = DeviceStatus();
-    d..ready = ready
+    d
+      ..ready = ready
       ..init = init
       ..notExist = notExist
       ..diskError = diskError
@@ -40,18 +41,52 @@ class DeviceStatus {
       ..state = state;
     return d;
   }
-}
 
+  Map<String, dynamic> toJson() {
+    return {
+      'ready': ready,
+      'init': init,
+      'notExist': notExist,
+      'diskError': diskError,
+      'paperJam': paperJam,
+      'paperOut': paperOut,
+      'powerOff': powerOff,
+      'unknown': unknown,
+      'headLifted': headLifted,
+      'maxWeightExceeded': maxWeightExceeded,
+      'desc': desc,
+      'state': state.toString().split('.').last,
+    };
+  }
+
+  factory DeviceStatus.fromJson(Map<String, dynamic> json) {
+    T enumFromString<T>(List<T> values, String value) {
+      return values.firstWhere((v) => v.toString().split('.').last.toLowerCase() == value.toLowerCase());
+    }
+
+    return DeviceStatus()
+      ..ready = json['ready']
+      ..init = json['init']
+      ..notExist = json['notExist']
+      ..diskError = json['diskError']
+      ..paperJam = json['paperJam']
+      ..paperOut = json['paperOut']
+      ..powerOff = json['powerOff']
+      ..unknown = json['unknown']
+      ..headLifted = json['headLifted']
+      ..maxWeightExceeded = json['maxWeightExceeded']
+      ..desc = json['desc']
+      ..state = enumFromString(StatusState.values, json['state']);
+  }
+}
 
 class StatusParsers {
   // OS=0 or OS#0 or OS:0  (captures one digit 0..9)
-  static final RegExp _osExp =
-  RegExp(r'\bOS\s*[#=:]\s*([0-9])', caseSensitive: false);
+  static final RegExp _osExp = RegExp(r'\bOS\s*[#=:]\s*([0-9])', caseSensitive: false);
 
   // SI=00 / SI=11 / SI=1O / SI=1J (two chars after the delimiter)
   // Accepts 0/O ambiguity.
-  static final RegExp _siExp =
-  RegExp(r'\bSI\s*[#=:]\s*([A-Za-z0-9]{2})', caseSensitive: false);
+  static final RegExp _siExp = RegExp(r'\bSI\s*[#=:]\s*([A-Za-z0-9]{2})', caseSensitive: false);
 
   static String? extractOS(String s) {
     final m = _osExp.firstMatch(s);
@@ -67,11 +102,9 @@ class StatusParsers {
   }
 }
 
-
 class StatusManager {
   final DeviceStatus _status = DeviceStatus();
-  final ValueNotifier<DeviceStatus> statusNotifier =
-  ValueNotifier<DeviceStatus>(DeviceStatus());
+  final ValueNotifier<DeviceStatus> statusNotifier = ValueNotifier<DeviceStatus>(DeviceStatus());
 
   DeviceStatus get status => statusNotifier.value;
 
@@ -154,7 +187,7 @@ class StatusManager {
               ..state = StatusState.busy;
             break;
 
-          default:  // other error/unknown
+          default: // other error/unknown
             _status
               ..ready = false
               ..init = false

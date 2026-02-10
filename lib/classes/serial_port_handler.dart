@@ -227,14 +227,13 @@ class SerialPortHandler {
 
       final (newCts, newDsr) = _readCtsDsr(_inner!);
 
-      // if (newCts == _lastCts && newDsr == _lastDsr) return;
+      if (newCts == _lastCts && newDsr == _lastDsr) return;
 
       _lastCts = newCts;
       _lastDsr = newDsr;
 
       // Match your "Task.Delay(500)" debounce
       await Future<void>.delayed(const Duration(milliseconds: 500));
-      log("should _handlePinChanged");
       _handlePinChanged(
         ctsHolding: newCts,
         dsrHolding: newDsr,
@@ -418,19 +417,17 @@ class SerialPortHandler {
 
 
   (bool cts, bool dsr) _readCtsDsr(SerialPort port) {
-    // try {
+    try {
       // port.signals is a bitmask of SerialPortSignal.* constants. :contentReference[oaicite:2]{index=2}
       final signals = port.signals;
       final cts = (signals & SerialPortSignal.cts) != 0;
       final dsr = (signals & SerialPortSignal.dsr) != 0;
-      log("_readCtsDsr done  ${cts}  $dsr");
+      // log("_readCtsDsr done  ${cts}  $dsr");
       return (cts, dsr);
-    // }catch(e){
-    //   // if(savedHandler!=null){
-    //   //   openReader(savedHandler);
-    //   // }
-    //   return (false,false);
-    // }
+    }catch(e){
+      close();
+      return (false,false);
+    }
 
   }
 

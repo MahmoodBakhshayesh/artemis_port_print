@@ -158,20 +158,23 @@ class ArtemisPortBarcodeListener extends ArtemisPortDevice implements IArtemisDe
 
   void _updateStatus() {
     // First, update the generic connection status
-    switch (_statusNotifier.value) {
-      case BarcodeReaderStatus.connected:
-      case BarcodeReaderStatus.listening:
+    switch (portStatus.value) {
+      case PortStatus.open:
+      case PortStatus.open:
         _connectionStatus.value = DeviceConnectionStatus.connected;
         break;
-      case BarcodeReaderStatus.connecting:
+      case PortStatus.opening:
         _connectionStatus.value = DeviceConnectionStatus.connecting;
         break;
-      case BarcodeReaderStatus.disconnected:
+      case PortStatus.closed:
         _connectionStatus.value = DeviceConnectionStatus.disconnected;
         break;
-      case BarcodeReaderStatus.error:
+      case PortStatus.error:
         _connectionStatus.value = DeviceConnectionStatus.error;
         break;
+      case PortStatus.closing:
+        _connectionStatus.value = DeviceConnectionStatus.disconnected;
+
     }
 
     // Then, update the image path
@@ -192,9 +195,7 @@ class ArtemisPortBarcodeListener extends ArtemisPortDevice implements IArtemisDe
         break;
       case BarcodeReaderStatus.disconnected:
 
-
-      default:
-        statusFolder = 'notExist';
+      statusFolder = 'notExist';
         break;
     }
 

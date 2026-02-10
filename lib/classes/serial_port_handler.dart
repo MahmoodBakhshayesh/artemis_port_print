@@ -2,17 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_libserialport/flutter_libserialport.dart';
 import '../artemis_port_util.dart';
+import '../util.dart';
 import 'frame_parser.dart';
 import 'serial_device_config.dart';
 
-// Match your existing types
-class DataReceive {
-  final String text;
-  final List<int> bytes;
-  final int? indexOfBinaryByte;
-  DataReceive({required this.text, required this.bytes, this.indexOfBinaryByte});
-}
+enum _HandlerMode { none, readWrite, readOnly }
 
 // ---- SerialPortHandler (libserialport + restored framing & writeAll) ----
 
@@ -47,6 +43,7 @@ class SerialPortHandler {
   StreamSubscription<Uint8List>? _sub;
   Timer? _pollTimer;
   Timer? _pinPollTimer;
+  Timer? _hotplugTimer; // Added for hotplug monitoring
   Duration pinPollInterval = const Duration(milliseconds: 200);
 
   bool _bootstrapped = false;
@@ -56,12 +53,18 @@ class SerialPortHandler {
 
   bool _lastCts = false;
   bool _lastDsr = false;
+  
+  // Hotplug state tracking
+  bool _intendedOpen = false;
+  _HandlerMode _mode = _HandlerMode.none;
 
   SerialPortHandler({
     required this.portName,
     required this.config,
     this.enableLogging = true,
-  }) : _inner = SerialPort(portName);
+  }) : _inner = SerialPort(portName) {
+    _startHotplugMonitor();
+  }
 
   bool get isConnected => _inner.isOpen;
 
@@ -69,11 +72,12 @@ class SerialPortHandler {
 
   Future<bool> open() async {
     log("open handler1");
+    _intendedOpen = true;
+    _mode = _HandlerMode.readWrite;
 
     if (_inner.isOpen) {
       portStatus.value = PortStatus.open;
       return true;
-
     }
 
     _setConnecting();
@@ -109,7 +113,10 @@ class SerialPortHandler {
     _reader = SerialPortReader(_inner);
     _sub ??= _reader!.stream.listen(_onBytes, onError: (err, st) {
       _log('[PORT][$portName] Read error: $err');
-      portStatus.value = PortStatus.error;
+      // portStatus.value = PortStatus.error;
+      // Don't close here immediately, let watchdog or _readCtsDsr handle it if critical
+      // But if stream errors, usually connection is dead.
+      _internalClose(keepIntent: true);
     }, onDone: () {
       _log('[PORT][$portName] Reader closed.');
       if (!_inner.isOpen) {
@@ -139,9 +146,9 @@ class SerialPortHandler {
 
     // ---- PinChanged equivalent: poll and detect changes ----
     _pinPollTimer = Timer.periodic(pinPollInterval, (_) async {
-      if (_inner == null) return;
+      if (!_inner.isOpen) return;
 
-      final (newCts, newDsr) = _readCtsDsr(_inner!);
+      final (newCts, newDsr) = _readCtsDsr(_inner);
 
       if (newCts == _lastCts && newDsr == _lastDsr) return;
 
@@ -161,13 +168,15 @@ class SerialPortHandler {
 
     return true;
   }
+  
   Future<bool> openReader(void Function(dynamic data) handler) async {
     log("open handler1");
+    _intendedOpen = true;
+    _mode = _HandlerMode.readOnly;
 
     if (_inner.isOpen) {
       portStatus.value = PortStatus.open;
       return true;
-
     }
 
     _setConnecting();
@@ -203,7 +212,7 @@ class SerialPortHandler {
     _reader = SerialPortReader(_inner);
     _sub ??= _reader!.stream.listen(handler, onError: (err, st) {
       _log('[PORT][$portName] Read error: $err');
-      portStatus.value = PortStatus.error;
+      _internalClose(keepIntent: true);
     }, onDone: () {
       _log('[PORT][$portName] Reader closed.');
       if (!_inner.isOpen) {
@@ -224,8 +233,9 @@ class SerialPortHandler {
 
     // ---- PinChanged equivalent: poll and detect changes ----
     _pinPollTimer = Timer.periodic(pinPollInterval, (_) async {
+      if (!_inner.isOpen) return;
 
-      final (newCts, newDsr) = _readCtsDsr(_inner!);
+      final (newCts, newDsr) = _readCtsDsr(_inner);
 
       if (newCts == _lastCts && newDsr == _lastDsr) return;
 
@@ -245,13 +255,23 @@ class SerialPortHandler {
     return true;
   }
 
-
   Future<bool> close() async {
-    _log('[PORT][$portName] Closing...');
+    return _internalClose(keepIntent: false);
+  }
+
+  Future<bool> _internalClose({bool keepIntent = false}) async {
+    _log('[PORT][$portName] Closing (keepIntent=$keepIntent)...');
     portStatus.value = PortStatus.closing;
+    
+    if (!keepIntent) {
+      _intendedOpen = false;
+      _mode = _HandlerMode.none;
+    }
 
     _pollTimer?.cancel();
     _pollTimer = null;
+    _pinPollTimer?.cancel();
+    _pinPollTimer = null;
     await _sub?.cancel();
     _sub = null;
     _reader?.close();
@@ -261,9 +281,22 @@ class SerialPortHandler {
       try { _inner.close(); } catch (_) {}
       _log('[PORT][$portName] Closed.');
     }
-    portStatus.value = PortStatus.closed;
+    
+    // If we keep intent, we signal 'error' or 'closed' but we will retry.
+    // 'closed' usually means intentional close. 'error' or 'offline' might be better for hotplug wait.
+    portStatus.value = keepIntent ? PortStatus.error : PortStatus.closed;
     _setOffline();
     return true;
+  }
+
+  void dispose() {
+    _hotplugTimer?.cancel();
+    _hotplugTimer = null;
+    close();
+    _dataCtrl.close();
+    // _inner.dispose(); // SerialPort doesn't strictly need dispose in Dart wrapper usually, but good practice if available.
+    // However, wrapper might reuse underlying object. libserialport wrapper in dart usually relies on GC or close.
+    // The provided context doesn't show _inner.dispose() usage in previous file, so I'll skip to be safe.
   }
 
   Future<bool> sendBytes(List<int> message) async {
@@ -425,7 +458,8 @@ class SerialPortHandler {
       // log("_readCtsDsr done  ${cts}  $dsr");
       return (cts, dsr);
     }catch(e){
-      close();
+      // This is often where we catch unplug events during polling
+      _internalClose(keepIntent: true);
       return (false,false);
     }
 
@@ -494,5 +528,32 @@ class SerialPortHandler {
 
     _lastOccurred = occurred;
   }
-}
 
+  void _startHotplugMonitor() {
+    _hotplugTimer?.cancel();
+    _hotplugTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
+      try {
+        final ports = SerialPort.availablePorts;
+        final isAvailable = ports.contains(portName);
+
+        if (!isAvailable && _inner.isOpen) {
+           _log('[HOTPLUG][$portName] Port disconnected (unplugged).');
+           await _internalClose(keepIntent: true);
+           // Force status to error to indicate unplug
+           portStatus.value = PortStatus.error;
+        } else if (isAvailable && !_inner.isOpen && _intendedOpen) {
+           _log('[HOTPLUG][$portName] Port detected. Reconnecting...');
+           if (_mode == _HandlerMode.readWrite) {
+             await open();
+           } else if (_mode == _HandlerMode.readOnly) {
+             if (savedHandler != null) {
+               await openReader(savedHandler);
+             }
+           }
+        }
+      } catch (e) {
+        _log('[HOTPLUG][$portName] Check error: $e');
+      }
+    });
+  }
+}

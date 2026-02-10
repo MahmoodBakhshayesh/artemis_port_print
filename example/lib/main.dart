@@ -73,7 +73,7 @@ class _MyHomePageState extends State<MyHomePage> {
           .map(
             (a) => ArtemisPortDevice(
               portName: a,
-              config: ArtemisPortDeviceSetting(portName: a, baudRate: BaudRate.br_9600, handshake: Handshake.none),
+              config: ArtemisPortDeviceSetting(portName: a, baudRate: BaudRate.br_115200, handshake: Handshake.none,dataBits: DataBits.db_8,stopBits: StopBits.one),
             ),
           )
           .toList(),
@@ -118,11 +118,26 @@ class _MyHomePageState extends State<MyHomePage> {
                 ...printers
                     .map((p) => p.asBarcodeReader)
                     .map(
-                      (bc) => ListTile(
+                      (bc) {
+                        return ListTile(
                         title: Text(bc.portName),
-                        subtitle: TextButton(onPressed: () async {
-                          await bc.disconnect();
-                        }, child: Text("close")),
+                        subtitle: Row(
+                          spacing: 12,
+                          children: [
+                            TextButton(
+                              onPressed: () async {
+                                await bc.disconnect();
+                              },
+                              child: Text("close"),
+                            ),
+                                    ValueListenableBuilder(valueListenable: bc.portStatus, builder: (BuildContext context, PortStatus value, Widget? child) {
+                                      return Text(value.name);
+                                    },),
+                                    ValueListenableBuilder(valueListenable: bc.barcodeReaderStatus, builder: (BuildContext context, BarcodeReaderStatus value, Widget? child) {
+                                      return Text(value.name);
+                                    },),
+                          ],
+                        ),
                         onTap: () async {
                           try {
                             log("Trying to set ${bc.portName} as barcode reader");
@@ -146,12 +161,89 @@ class _MyHomePageState extends State<MyHomePage> {
                               });
                             }
                           } catch (e) {
+                            if(e is Error){
+                              log(e.stackTrace.toString());
+                            }
                             log("Error setting up barcode reader: $e");
                           }
                         },
                         trailing: bc.icon(24),
-                      ),
+                      );
+                      },
                     ),
+
+
+                // ...printers
+                //     .map((p) => p.asPrinter)
+                //     .map(
+                //       (bp) => ListTile(
+                //     title: Text(bp.portName),
+                //     subtitle: Row(
+                //       children: [
+                //         TextButton(
+                //           onPressed: () async {
+                //             await bp.initIt();
+                //           },
+                //           child: Text("init"),
+                //         ),
+                //         TextButton(
+                //           onPressed: () async {
+                //             await bp.setBtPec();
+                //           },
+                //           child: Text("set pec"),
+                //         ),
+                //         TextButton(
+                //           onPressed: () async {
+                //             await bp.testPrintTag();
+                //           },
+                //           child: Text("test bt"),
+                //         ),
+                //         // TextButton(
+                //         //   onPressed: () async {
+                //         //     bp.startMonitoring();
+                //         //   },
+                //         //   child: Text("start monitoring"),
+                //         // ),
+                //         TextButton(
+                //           onPressed: () async {
+                //             await bp.disconnect();
+                //           },
+                //           child: Text("close"),
+                //         ),
+                //         TextButton(
+                //           onPressed: () async {
+                //             final s = bp.portStatus.value;
+                //             log(s.name);
+                //           },
+                //           child: Text("get port sttatus"),
+                //         ),
+                //         ValueListenableBuilder(valueListenable: bp.portStatus, builder: (BuildContext context, PortStatus value, Widget? child) {
+                //           return Text(value.name);
+                //         },),
+                //         ValueListenableBuilder(valueListenable: bp.statusListenable, builder: (BuildContext context, DeviceStatus value, Widget? child) {
+                //           return Text(value.desc);
+                //         },),
+                //       ],
+                //     ),
+                //     onTap: () async {
+                //
+                //       // ArtemisPortPrinter p = ArtemisPortPrinter(portName: bp.portName);
+                //       // p.connect();
+                //       // p.portStatus.addListener((){
+                //       //   log("port status changed ${p.portStatus.value.name}");
+                //       // });
+                //
+                //       try {
+                //         await bp.connect();
+                //         await bp.initIt();
+                //         // bp.startMonitoring();
+                //       } catch (e) {
+                //         log("Error setting up printer: $e");
+                //       }
+                //     },
+                //     trailing: bp.icon(24),
+                //   ),
+                // ),
                 // ...printers.map((portDevice){
                 //   final port = portDevice.portName;
                 //   return  ExpansionTile(

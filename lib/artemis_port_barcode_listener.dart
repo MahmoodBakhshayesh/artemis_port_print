@@ -34,7 +34,7 @@ class ArtemisPortBarcodeListener extends ArtemisPortDevice implements IArtemisDe
       super.config,
       super.enableLogging,
       this.onData}) {
-    _port = SerialPort(portName);
+    // _port = SerialPort(portName);
     _statusNotifier.addListener(_updateStatus);
   }
 
@@ -60,7 +60,7 @@ class ArtemisPortBarcodeListener extends ArtemisPortDevice implements IArtemisDe
     stopListening();
     close();
     _controller.close();
-    _port.dispose();
+    // _port.dispose();
     _statusNotifier.removeListener(_updateStatus);
     _statusNotifier.dispose();
     _connectionStatus.dispose();
@@ -73,13 +73,25 @@ class ArtemisPortBarcodeListener extends ArtemisPortDevice implements IArtemisDe
   Stream<String> get onBarcode => _controller.stream;
   Timer? _flushTimer;
 
-  bool open() {
-    if (_port.isOpen) {
+  Future<bool> open() async {
+    if (handler.isOpen) {
       log("Port is already open");
       return true;
     }
     _statusNotifier.value = BarcodeReaderStatus.connecting;
-    if (!_port.openRead()) {
+    await handler.openReader((data) {
+      _buffer.addAll(data);
+      _flushTimer?.cancel();
+      _flushTimer = Timer(const Duration(milliseconds: 30), () {
+        final barcode = ascii.decode(_buffer).trim();
+        if (barcode.isNotEmpty) {
+          onData?.call(barcode);
+          _controller.add(barcode);
+        }
+        _buffer.clear();
+      });
+    });
+    if (!handler.isOpen) {
       final error =
           'Failed to open port $portName. Check permissions or if the port is in use.';
       _controller.addError(error);
@@ -93,37 +105,43 @@ class ArtemisPortBarcodeListener extends ArtemisPortDevice implements IArtemisDe
   }
 
   void close() {
-    if (_port.isOpen) {
-      _port.close();
+    if (handler.isOpen) {
+      handler.close();
       _statusNotifier.value = BarcodeReaderStatus.disconnected;
     }
   }
 
   void startListening() {
-    if (!_port.isOpen) {
-      if (!open()) {
-        return;
-      }
-    }
-    log("Starting to listen for barcodes");
-    _statusNotifier.value = BarcodeReaderStatus.listening;
-    _reader = SerialPortReader(_port);
-    _reader!.stream.listen((data) {
-      _buffer.addAll(data);
-      _flushTimer?.cancel();
-      _flushTimer = Timer(const Duration(milliseconds: 30), () {
-        final barcode = ascii.decode(_buffer).trim();
-        if (barcode.isNotEmpty) {
-          onData?.call(barcode);
-          _controller.add(barcode);
-        }
-        _buffer.clear();
+    return;
+
+
+    if (!handler.isOpen) {
+      open().then((_){
+        log("Starting to listen for barcodes");
+        _statusNotifier.value = BarcodeReaderStatus.listening;
+        _reader = handler.reader;
+        _reader!.stream.listen((data) {
+          _buffer.addAll(data);
+          _flushTimer?.cancel();
+          _flushTimer = Timer(const Duration(milliseconds: 30), () {
+            final barcode = ascii.decode(_buffer).trim();
+            if (barcode.isNotEmpty) {
+              onData?.call(barcode);
+              _controller.add(barcode);
+            }
+            _buffer.clear();
+          });
+        }, onError: (error) {
+          log("Error while listening to port: $error");
+          _controller.addError(error);
+          _statusNotifier.value = BarcodeReaderStatus.error;
+        });
       });
-    }, onError: (error) {
-      log("Error while listening to port: $error");
-      _controller.addError(error);
-      _statusNotifier.value = BarcodeReaderStatus.error;
-    });
+      // if (!open()) {
+      //   return;
+      // }
+    }
+
   }
 
   void stopListening() {
@@ -134,7 +152,7 @@ class ArtemisPortBarcodeListener extends ArtemisPortDevice implements IArtemisDe
     }
   }
 
-  bool get isOpen => _port.isOpen;
+  // bool get isOpen => _port.isOpen;
 
   static List<String> get availablePorts => SerialPort.availablePorts;
 

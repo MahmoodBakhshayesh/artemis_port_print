@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer';
 import 'package:flutter/foundation.dart';
 import '../artemis_port_util.dart';
 import 'frame_parser.dart';
@@ -31,10 +32,12 @@ class SerialPortHandler {
 
   late final SerialPort _inner;
   SerialPortReader? _reader;
+  SerialPortReader? get reader =>_reader;
 
   final _dataCtrl = StreamController<DataReceive>.broadcast();
   Stream<DataReceive> get onData => _dataCtrl.stream;
 
+  dynamic savedHandler;
   final FrameParser _parser = FrameParser(
     stx: 0x02,
     etx: 0x03,
@@ -43,7 +46,16 @@ class SerialPortHandler {
 
   StreamSubscription<Uint8List>? _sub;
   Timer? _pollTimer;
+  Timer? _pinPollTimer;
+  Duration pinPollInterval = const Duration(milliseconds: 200);
+
   bool _bootstrapped = false;
+
+  String _lastStatus = 'unknown';
+  DateTime _lastOccurred = DateTime.fromMillisecondsSinceEpoch(0);
+
+  bool _lastCts = false;
+  bool _lastDsr = false;
 
   SerialPortHandler({
     required this.portName,
@@ -53,10 +65,15 @@ class SerialPortHandler {
 
   bool get isConnected => _inner.isOpen;
 
+  bool get isOpen => isConnected;
+
   Future<bool> open() async {
+    log("open handler1");
+
     if (_inner.isOpen) {
       portStatus.value = PortStatus.open;
       return true;
+
     }
 
     _setConnecting();
@@ -65,6 +82,7 @@ class SerialPortHandler {
 
     if (!_inner.openReadWrite()) {
       portStatus.value = PortStatus.error;
+
       _log('[PORT][$portName] Failed to open.');
       return false;
     }
@@ -86,6 +104,7 @@ class SerialPortHandler {
       _setOffline();
       return false;
     }
+    log("open handler2");
 
     _reader = SerialPortReader(_inner);
     _sub ??= _reader!.stream.listen(_onBytes, onError: (err, st) {
@@ -99,6 +118,8 @@ class SerialPortHandler {
       }
     });
 
+    log("open handler3");
+
     portStatus.value = PortStatus.open;
 
     if (!_bootstrapped) {
@@ -110,8 +131,121 @@ class SerialPortHandler {
     _pollTimer ??=
         Timer.periodic(const Duration(seconds: 5), (_) => _pollOnce());
 
+    final (cts, dsr) = _readCtsDsr(_inner);
+    _lastCts = cts;
+    _lastDsr = dsr;
+
+    log("open handler4");
+
+    // ---- PinChanged equivalent: poll and detect changes ----
+    _pinPollTimer = Timer.periodic(pinPollInterval, (_) async {
+      if (_inner == null) return;
+
+      final (newCts, newDsr) = _readCtsDsr(_inner!);
+
+      if (newCts == _lastCts && newDsr == _lastDsr) return;
+
+      _lastCts = newCts;
+      _lastDsr = newDsr;
+
+      // Match your "Task.Delay(500)" debounce
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+
+      _handlePinChanged(
+        ctsHolding: newCts,
+        dsrHolding: newDsr,
+        occurred: DateTime.now(),
+      );
+
+    });
+
     return true;
   }
+  Future<bool> openReader(void Function(dynamic data) handler) async {
+    log("open handler1");
+
+    if (_inner.isOpen) {
+      portStatus.value = PortStatus.open;
+      return true;
+
+    }
+
+    _setConnecting();
+    portStatus.value = PortStatus.opening;
+    _log('[PORT][$portName] Opening...');
+
+    if (!_inner.openRead()) {
+      portStatus.value = PortStatus.error;
+
+      _log('[PORT][$portName] Failed to open.');
+      return false;
+    }
+    _log('[PORT][$portName] Opened.');
+
+    try {
+      final c = SerialPortConfig()
+        ..baudRate = config.baudRate
+        ..bits     = config.dataBits
+        ..parity   = config.parity
+        ..stopBits = config.stopBits
+        ..setFlowControl(config.flowControl);
+      _inner.config = c;
+      _log('[PORT][$portName] Config applied.');
+    } catch (e) {
+      _log('[PORT][$portName] Config error: $e');
+      try { _inner.close(); } catch (_) {}
+      portStatus.value = PortStatus.error;
+      _setOffline();
+      return false;
+    }
+    log("open handler2");
+
+    _reader = SerialPortReader(_inner);
+    _sub ??= _reader!.stream.listen(handler, onError: (err, st) {
+      _log('[PORT][$portName] Read error: $err');
+      portStatus.value = PortStatus.error;
+    }, onDone: () {
+      _log('[PORT][$portName] Reader closed.');
+      if (!_inner.isOpen) {
+        portStatus.value = PortStatus.closed;
+        _setOffline();
+      }
+    });
+
+    log("open handler3");
+
+    portStatus.value = PortStatus.open;
+    savedHandler = handler;
+    final (cts, dsr) = _readCtsDsr(_inner);
+    _lastCts = cts;
+    _lastDsr = dsr;
+
+    log("open handler4");
+
+    // ---- PinChanged equivalent: poll and detect changes ----
+    _pinPollTimer = Timer.periodic(pinPollInterval, (_) async {
+
+      final (newCts, newDsr) = _readCtsDsr(_inner!);
+
+      // if (newCts == _lastCts && newDsr == _lastDsr) return;
+
+      _lastCts = newCts;
+      _lastDsr = newDsr;
+
+      // Match your "Task.Delay(500)" debounce
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      log("should _handlePinChanged");
+      _handlePinChanged(
+        ctsHolding: newCts,
+        dsrHolding: newDsr,
+        occurred: DateTime.now(),
+      );
+
+    });
+
+    return true;
+  }
+
 
   Future<bool> close() async {
     _log('[PORT][$portName] Closing...');
@@ -172,6 +306,10 @@ class SerialPortHandler {
       final text = ascii.decode(clean, allowInvalid: true);
 
       _log('[RX parsed][$portName] "$text" (${clean.length} bytes)');
+      
+      // if(text.startsWith("HDCERRM")){
+      //   _reInit();
+      // }
 
       int? idx;
       for (var i = 0; i < clean.length; i++) {
@@ -249,6 +387,7 @@ class SerialPortHandler {
     _log('[STATUS][$portName] Connecting...');
   }
 
+
   void _setOffline() {
     final s = statusMgr.status.clone()
       ..state = StatusState.offline
@@ -259,7 +398,104 @@ class SerialPortHandler {
   }
 
   void _log(String msg) {
+    // log(msg);
     if (enableLogging) debugPrint(msg);
+  }
+
+  // Future<void> _reInit() async {
+  //   String command1 = "UK";
+  //   String command2 = "MX";
+  //   String command3 = "UG#GID";
+  //   String command4 = "EP#AIRLINEID=GID#HARDCODE=HDC#UNSOL=Y";
+  //   String command5 = "UC#999";
+  //   await sendBytes(command1.codeUnits);
+  //   await sendBytes(command2.codeUnits);
+  //   await sendBytes(command3.codeUnits);
+  //   await sendBytes(command4.codeUnits);
+  //   await sendBytes(command5.codeUnits);
+  // }
+
+
+
+  (bool cts, bool dsr) _readCtsDsr(SerialPort port) {
+    // try {
+      // port.signals is a bitmask of SerialPortSignal.* constants. :contentReference[oaicite:2]{index=2}
+      final signals = port.signals;
+      final cts = (signals & SerialPortSignal.cts) != 0;
+      final dsr = (signals & SerialPortSignal.dsr) != 0;
+      log("_readCtsDsr done  ${cts}  $dsr");
+      return (cts, dsr);
+    // }catch(e){
+    //   // if(savedHandler!=null){
+    //   //   openReader(savedHandler);
+    //   // }
+    //   return (false,false);
+    // }
+
+  }
+
+  void _handlePinChanged({
+    required bool ctsHolding,
+    required bool dsrHolding,
+    required DateTime occurred,
+  }) {
+    // (Optional) log like your C#:
+    log('[CTS: $ctsHolding, DSR: $dsrHolding] Changed.');
+
+    // Direct mapping of your state machine:
+    if (!ctsHolding && !dsrHolding) {
+
+      portStatus.value = PortStatus.closed;
+      log("set port status close");
+
+      // _deviceAvailable = false;
+      // _lastStatus = 'poweroff';
+      // _availabilityController.add(
+      //   DeviceAvailable(available: _deviceAvailable, lastStatus: _lastStatus),
+      // );
+      // _lastOccurred = occurred;
+      return;
+
+    } else if (dsrHolding && !ctsHolding) {
+      portStatus.value = PortStatus.error;
+      log("set port status error");
+
+      // _deviceAvailable = false;
+      // _lastStatus = 'offline';
+      // _availabilityController.add(
+      //   DeviceAvailable(
+      //     available: _deviceAvailable,
+      //     offline: true,
+      //     lastStatus: _lastStatus,
+      //   ),
+      // );
+      // _lastOccurred = occurred;
+      return;
+    } else if (dsrHolding && ctsHolding) {
+      portStatus.value = PortStatus.open;
+      log("set port status open");
+      // _deviceAvailable = true;
+      // _lastStatus = 'ready';
+      // _availabilityController.add(
+      //   DeviceAvailable(available: _deviceAvailable, lastStatus: _lastStatus),
+      // );
+      // _lastOccurred = occurred;
+      return;
+    }
+
+    // Your "within 1 second" heuristic:
+    // final diffSeconds = occurred.difference(_lastOccurred).inMilliseconds / 1000.0;
+    // if (diffSeconds <= 1) {
+    //   _deviceAvailable = dsrHolding || ctsHolding;
+    // } else {
+    //   _deviceAvailable = !(!ctsHolding && !dsrHolding);
+    // }
+    //
+    // _availabilityController.add(
+    //   DeviceAvailable(available: _deviceAvailable, lastStatus: _lastStatus),
+    // );
+
+    _lastOccurred = occurred;
   }
 }
 

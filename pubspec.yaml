@@ -34,6 +34,7 @@ flutter:
     - assets/images/devices/ready/
     - assets/images/devices/ready/
     - assets/images/devices/diskError/
+    - assets/images/devices/hasError/
     - assets/images/devices/headLifted/
     - assets/images/devices/init/
     - assets/images/devices/locked/

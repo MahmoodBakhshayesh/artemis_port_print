@@ -39,6 +39,7 @@ class SerialPrintQueue {
     _tail = _tail
         .then((_) => _run(requestBytes).then(completer.complete).catchError(completer.completeError));
     return completer.future;
+
   }
 
   static PrintStatus _defaultClassifier(Uint8List bytes, String text) {

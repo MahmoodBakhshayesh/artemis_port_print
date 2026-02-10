@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer';
 import 'dart:typed_data';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 
@@ -49,13 +50,16 @@ class SerialPortMonitor {
     Duration pinPollInterval = const Duration(milliseconds: 200),
   }) async {
     final port = SerialPort(portName);
-
-    if (!port.openReadWrite()) {
-      throw StateError(
-        'Could not open $portName: ${SerialPort.lastError}',
-      );
+    if(!port.isOpen) {
+      if (!port.openReadWrite()) {
+        if("${SerialPort.lastError}"=="The operation completed successfully."){
+          throw StateError(
+            'Could not open $portName: ${SerialPort.lastError}',
+          );
+        }
+      }
     }
-
+    log("start monitoring");
     // Configure port
     final config = port.config;
     config.baudRate = baudRate;
@@ -102,6 +106,8 @@ class SerialPortMonitor {
         dsrHolding: newDsr,
         occurred: DateTime.now(),
       );
+      log("start _handlePinChanged");
+
     });
   }
 
@@ -111,6 +117,7 @@ class SerialPortMonitor {
     final cts = (signals & SerialPortSignal.cts) != 0;
     final dsr = (signals & SerialPortSignal.dsr) != 0;
     return (cts, dsr);
+
   }
 
   void _handlePinChanged({
@@ -119,7 +126,7 @@ class SerialPortMonitor {
     required DateTime occurred,
   }) {
     // (Optional) log like your C#:
-    // print('[CTS: $ctsHolding, DSR: $dsrHolding] Changed.');
+    log('[CTS: $ctsHolding, DSR: $dsrHolding] Changed.');
 
     // Direct mapping of your state machine:
     if (!ctsHolding && !dsrHolding) {

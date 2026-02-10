@@ -36,6 +36,7 @@ class ArtemisPortBarcodeListener extends ArtemisPortDevice implements IArtemisDe
       this.onData}) {
     // _port = SerialPort(portName);
     _statusNotifier.addListener(_updateStatus);
+    handler.portStatus.addListener(_updateStatus);
   }
 
   // -------- IArtemisDevice Implementation --------
@@ -158,48 +159,63 @@ class ArtemisPortBarcodeListener extends ArtemisPortDevice implements IArtemisDe
 
   void _updateStatus() {
     // First, update the generic connection status
-    switch (portStatus.value) {
-      case PortStatus.open:
-      case PortStatus.open:
-        _connectionStatus.value = DeviceConnectionStatus.connected;
-        break;
-      case PortStatus.opening:
-        _connectionStatus.value = DeviceConnectionStatus.connecting;
-        break;
-      case PortStatus.closed:
-        _connectionStatus.value = DeviceConnectionStatus.disconnected;
-        break;
-      case PortStatus.error:
-        _connectionStatus.value = DeviceConnectionStatus.error;
-        break;
-      case PortStatus.closing:
-        _connectionStatus.value = DeviceConnectionStatus.disconnected;
+    // switch (portStatus.value) {
+    //   case PortStatus.open:
+    //     _connectionStatus.value = DeviceConnectionStatus.connected;
+    //     break;
+    //   case PortStatus.opening:
+    //     _connectionStatus.value = DeviceConnectionStatus.connecting;
+    //     break;
+    //   case PortStatus.closed:
+    //     _connectionStatus.value = DeviceConnectionStatus.disconnected;
+    //     break;
+    //   case PortStatus.error:
+    //     _connectionStatus.value = DeviceConnectionStatus.error;
+    //     break;
+    //   case PortStatus.closing:
+    //     _connectionStatus.value = DeviceConnectionStatus.disconnected;
+    //
+    // }
 
-    }
-
-    // Then, update the image path
     String statusFolder;
-    switch (_statusNotifier.value) {
-      case BarcodeReaderStatus.connected:
-        statusFolder = 'ready';
-        break;
+    final portStatus = handler.portStatus.value;
+    final deviceStatus = handler.statusMgr.status;
 
-      case BarcodeReaderStatus.listening:
-        statusFolder = 'ready'; // Using 'printing' to indicate active listening
-        break;
-      case BarcodeReaderStatus.connecting:
-        statusFolder = 'init';
-        break;
-      case BarcodeReaderStatus.error:
-        statusFolder = 'diskError';
-        break;
-      case BarcodeReaderStatus.disconnected:
-
-      statusFolder = 'notExist';
-        break;
+    if (portStatus == PortStatus.closed || portStatus == PortStatus.closing) {
+      statusFolder = 'diskError';
+    } else if (portStatus == PortStatus.error) {
+      statusFolder = 'diskError';
+    } else if (portStatus == PortStatus.opening) {
+      statusFolder = 'init';
+    } else {
+      statusFolder = 'ready';
     }
-
     _statusImagePathNotifier.value = 'assets/images/devices/$statusFolder/BC.png';
+    //
+    // // Then, update the image path
+    // String statusFolder;
+    // switch (_statusNotifier.value) {
+    //   case BarcodeReaderStatus.connected:
+    //     statusFolder = 'ready';
+    //     break;
+    //
+    //   case BarcodeReaderStatus.listening:
+    //     statusFolder = 'ready'; // Using 'printing' to indicate active listening
+    //     break;
+    //   case BarcodeReaderStatus.connecting:
+    //     statusFolder = 'init';
+    //     break;
+    //   case BarcodeReaderStatus.error:
+    //     statusFolder = 'diskError';
+    //     break;
+    //   case BarcodeReaderStatus.disconnected:
+    //
+    //   statusFolder = 'notExist';
+    //     break;
+    // }
+
+    //
+    // _statusImagePathNotifier.value = 'assets/images/devices/$statusFolder/BC.png';
 
   }
 

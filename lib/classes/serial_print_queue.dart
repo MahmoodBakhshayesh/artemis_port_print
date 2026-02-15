@@ -33,7 +33,8 @@ class SerialPrintQueue {
   /// Enqueue request; returns classified result.
   Future<PrintResult> enqueue(Uint8List requestBytes) {
     // Delegate to SerialPortHandler's command queue to ensure serialization with internal commands
-    return sp.scheduleTask(() => _run(requestBytes));
+    // Mark as "isPrinting" so handler sets status to Busy/Printing
+    return sp.scheduleTask(() => _run(requestBytes), isPrinting: true);
   }
 
   static PrintStatus _defaultClassifier(Uint8List bytes, String text) {
@@ -66,13 +67,15 @@ class SerialPrintQueue {
     final sub = sp.onData.listen((evt) {
       final payload = stripFraming
           ? _stripStxEtx(Uint8List.fromList(evt.bytes))
-          : Uint8List.fromList(evt.bytes);
+          : Uint8List.fromList(evt!.bytes);
       chunks.addAll(payload);
       quiet?.cancel();
       quiet = Timer(quietWindow, finish);
     }, onError: (_) => finish(), onDone: finish);
 
-    final sent = await sp.sendBytes(requestBytes);
+    // Use sendBytesImmediate because we are already running inside a scheduled task.
+    // Calling the queued sendBytes here would cause a deadlock.
+    final sent = await sp.sendBytesImmediate(requestBytes);
     if (!sent) {
       await sub.cancel();
       return const PrintResult(PrintStatus.error, text: 'Write failed');

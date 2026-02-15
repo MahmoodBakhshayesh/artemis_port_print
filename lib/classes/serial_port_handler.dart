@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
+import 'dart:typed_data'; // Added missing import
 import 'package:flutter/foundation.dart';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 import '../artemis_port_util.dart';
-import '../util.dart';
 import 'frame_parser.dart';
 import 'serial_device_config.dart';
 
@@ -74,12 +74,18 @@ class SerialPortHandler {
   bool get isOpen => isConnected;
 
   /// Schedules a task to be executed sequentially in the command queue.
-  Future<T> scheduleTask<T>(Future<T> Function() task) {
+  /// [isPrinting] : If true, sets the device status to 'Busy'/'Printing' before starting.
+  Future<T> scheduleTask<T>(Future<T> Function() task, {bool isPrinting = false}) {
     final completer = Completer<T>();
     
     // Ensure the queue chain continues regardless of previous task success/failure
-    _taskQueue = _taskQueue.then((_) => _runTask(task, completer))
-                           .catchError((_) => _runTask(task, completer));
+    _taskQueue = _taskQueue.then((_) async {
+       if (isPrinting) _setPrinting();
+       await _runTask(task, completer);
+    }).catchError((_) async {
+       if (isPrinting) _setPrinting();
+       await _runTask(task, completer);
+    });
     
     return completer.future;
   }
@@ -314,7 +320,13 @@ class SerialPortHandler {
     _dataCtrl.close();
   }
 
-  Future<bool> sendBytes(List<int> message) async {
+  /// Use this method for general writing. It will be queued.
+  Future<bool> sendBytes(List<int> message) {
+    return scheduleTask(() => sendBytesImmediate(message), isPrinting: true);
+  }
+
+  /// Use this method ONLY inside a scheduled task to avoid deadlock.
+  Future<bool> sendBytesImmediate(List<int> message) async {
     if (!_inner.isOpen) {
       _log('[PORT][$portName] sendBytes failed: port not open.');
       return false;
@@ -396,7 +408,7 @@ class SerialPortHandler {
 
   Future<void> _sendCmd(String cmd) async {
     _log('[CMD][$portName] Sending "$cmd"...');
-    await sendBytes(cmd.codeUnits);
+    await sendBytesImmediate(cmd.codeUnits);
   }
 
   Uint8List _frameBytes(Uint8List message) {
@@ -428,12 +440,20 @@ class SerialPortHandler {
   }
 
   void _setConnecting() {
+    _setBusyState('Connecting...');
+  }
+  
+  void _setPrinting() {
+    _setBusyState('Printing...');
+  }
+  
+  void _setBusyState(String desc) {
     final s = statusMgr.status.clone()
       ..state = StatusState.busy
-      ..desc = 'Connecting...'
+      ..desc = desc
       ..ready = false;
     statusMgr.statusNotifier.value = s;
-    _log('[STATUS][$portName] Connecting...');
+    _log('[STATUS][$portName] $desc');
   }
 
 
@@ -522,4 +542,12 @@ class SerialPortHandler {
       }
     });
   }
+}
+
+// Match your existing types
+class DataReceive {
+  final String text;
+  final List<int> bytes;
+  final int? indexOfBinaryByte;
+  DataReceive({required this.text, required this.bytes, this.indexOfBinaryByte});
 }

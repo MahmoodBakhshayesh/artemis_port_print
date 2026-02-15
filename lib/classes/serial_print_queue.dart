@@ -15,9 +15,6 @@ class SerialPrintQueue {
   final bool stripFraming;
   final ResponseClassifier classify;
 
-  // serialize requests
-  Future<void> _tail = Future<void>.value();
-
   SerialPrintQueue(
       this.sp, {
         this.timeout = const Duration(seconds: 2),
@@ -35,11 +32,8 @@ class SerialPrintQueue {
 
   /// Enqueue request; returns classified result.
   Future<PrintResult> enqueue(Uint8List requestBytes) {
-    final completer = Completer<PrintResult>();
-    _tail = _tail
-        .then((_) => _run(requestBytes).then(completer.complete).catchError(completer.completeError));
-    return completer.future;
-
+    // Delegate to SerialPortHandler's command queue to ensure serialization with internal commands
+    return sp.scheduleTask(() => _run(requestBytes));
   }
 
   static PrintStatus _defaultClassifier(Uint8List bytes, String text) {

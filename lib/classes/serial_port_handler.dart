@@ -58,6 +58,9 @@ class SerialPortHandler {
   bool _intendedOpen = false;
   _HandlerMode _mode = _HandlerMode.none;
 
+  // Command Queue to serialize writes
+  Future<void> _taskQueue = Future.value();
+
   SerialPortHandler({
     required this.portName,
     required this.config,
@@ -69,6 +72,26 @@ class SerialPortHandler {
   bool get isConnected => _inner.isOpen;
 
   bool get isOpen => isConnected;
+
+  /// Schedules a task to be executed sequentially in the command queue.
+  Future<T> scheduleTask<T>(Future<T> Function() task) {
+    final completer = Completer<T>();
+    
+    // Ensure the queue chain continues regardless of previous task success/failure
+    _taskQueue = _taskQueue.then((_) => _runTask(task, completer))
+                           .catchError((_) => _runTask(task, completer));
+    
+    return completer.future;
+  }
+
+  Future<void> _runTask<T>(Future<T> Function() task, Completer<T> completer) async {
+    try {
+      final result = await task();
+      completer.complete(result);
+    } catch (e, s) {
+      completer.completeError(e, s);
+    }
+  }
 
   Future<bool> open() async {
     log("open handler1");
@@ -113,9 +136,6 @@ class SerialPortHandler {
     _reader = SerialPortReader(_inner);
     _sub ??= _reader!.stream.listen(_onBytes, onError: (err, st) {
       _log('[PORT][$portName] Read error: $err');
-      // portStatus.value = PortStatus.error;
-      // Don't close here immediately, let watchdog or _readCtsDsr handle it if critical
-      // But if stream errors, usually connection is dead.
       _internalClose(keepIntent: true);
     }, onDone: () {
       _log('[PORT][$portName] Reader closed.');
@@ -282,8 +302,6 @@ class SerialPortHandler {
       _log('[PORT][$portName] Closed.');
     }
     
-    // If we keep intent, we signal 'error' or 'closed' but we will retry.
-    // 'closed' usually means intentional close. 'error' or 'offline' might be better for hotplug wait.
     portStatus.value = keepIntent ? PortStatus.error : PortStatus.closed;
     _setOffline();
     return true;
@@ -294,9 +312,6 @@ class SerialPortHandler {
     _hotplugTimer = null;
     close();
     _dataCtrl.close();
-    // _inner.dispose(); // SerialPort doesn't strictly need dispose in Dart wrapper usually, but good practice if available.
-    // However, wrapper might reuse underlying object. libserialport wrapper in dart usually relies on GC or close.
-    // The provided context doesn't show _inner.dispose() usage in previous file, so I'll skip to be safe.
   }
 
   Future<bool> sendBytes(List<int> message) async {
@@ -339,10 +354,6 @@ class SerialPortHandler {
 
       _log('[RX parsed][$portName] "$text" (${clean.length} bytes)');
       
-      // if(text.startsWith("HDCERRM")){
-      //   _reInit();
-      // }
-
       int? idx;
       for (var i = 0; i < clean.length; i++) {
         if (clean[i] <= 31) { idx = i; break; }
@@ -364,17 +375,23 @@ class SerialPortHandler {
   }
 
   Future<void> _runBootstrap() async {
-    await _sendCmd("MX");
-    await _sendCmd("UG#GID");
-    await _sendCmd("EP#AIRLINEID=GID#HARDCODE=HDC#UNSOL=Y");
-    await _sendCmd("UC#999");
-    await _sendCmd("AV");
-    await _sendCmd("PV");
-    await _sendCmd("SQ");
+    // Queue bootstrap commands to ensure no interleaving
+    await scheduleTask(() async {
+      await _sendCmd("MX");
+      await _sendCmd("UG#GID");
+      await _sendCmd("EP#AIRLINEID=GID#HARDCODE=HDC#UNSOL=Y");
+      await _sendCmd("UC#999");
+      await _sendCmd("AV");
+      await _sendCmd("PV");
+      await _sendCmd("SQ");
+    });
   }
 
   Future<void> _pollOnce() async {
-    await _sendCmd("SQ");
+    // Queue status poll
+    await scheduleTask(() async {
+      await _sendCmd("SQ");
+    });
   }
 
   Future<void> _sendCmd(String cmd) async {
@@ -434,21 +451,6 @@ class SerialPortHandler {
     if (enableLogging) debugPrint(msg);
   }
 
-  // Future<void> _reInit() async {
-  //   String command1 = "UK";
-  //   String command2 = "MX";
-  //   String command3 = "UG#GID";
-  //   String command4 = "EP#AIRLINEID=GID#HARDCODE=HDC#UNSOL=Y";
-  //   String command5 = "UC#999";
-  //   await sendBytes(command1.codeUnits);
-  //   await sendBytes(command2.codeUnits);
-  //   await sendBytes(command3.codeUnits);
-  //   await sendBytes(command4.codeUnits);
-  //   await sendBytes(command5.codeUnits);
-  // }
-
-
-
   (bool cts, bool dsr) _readCtsDsr(SerialPort port) {
     try {
       // port.signals is a bitmask of SerialPortSignal.* constants. :contentReference[oaicite:2]{index=2}
@@ -478,53 +480,17 @@ class SerialPortHandler {
 
       portStatus.value = PortStatus.closed;
       log("set port status close");
-
-      // _deviceAvailable = false;
-      // _lastStatus = 'poweroff';
-      // _availabilityController.add(
-      //   DeviceAvailable(available: _deviceAvailable, lastStatus: _lastStatus),
-      // );
-      // _lastOccurred = occurred;
       return;
 
     } else if (dsrHolding && !ctsHolding) {
       portStatus.value = PortStatus.error;
       log("set port status error");
-
-      // _deviceAvailable = false;
-      // _lastStatus = 'offline';
-      // _availabilityController.add(
-      //   DeviceAvailable(
-      //     available: _deviceAvailable,
-      //     offline: true,
-      //     lastStatus: _lastStatus,
-      //   ),
-      // );
-      // _lastOccurred = occurred;
       return;
     } else if (dsrHolding && ctsHolding) {
       portStatus.value = PortStatus.open;
       log("set port status open");
-      // _deviceAvailable = true;
-      // _lastStatus = 'ready';
-      // _availabilityController.add(
-      //   DeviceAvailable(available: _deviceAvailable, lastStatus: _lastStatus),
-      // );
-      // _lastOccurred = occurred;
       return;
     }
-
-    // Your "within 1 second" heuristic:
-    // final diffSeconds = occurred.difference(_lastOccurred).inMilliseconds / 1000.0;
-    // if (diffSeconds <= 1) {
-    //   _deviceAvailable = dsrHolding || ctsHolding;
-    // } else {
-    //   _deviceAvailable = !(!ctsHolding && !dsrHolding);
-    // }
-    //
-    // _availabilityController.add(
-    //   DeviceAvailable(available: _deviceAvailable, lastStatus: _lastStatus),
-    // );
 
     _lastOccurred = occurred;
   }

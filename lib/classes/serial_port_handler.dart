@@ -423,13 +423,20 @@ class SerialPortHandler {
   Future<void> _runBootstrap() async {
     // Queue bootstrap commands to ensure no interleaving
     await scheduleTask(() async {
-      await _sendCommandAndWaitImmediate("MX");
-      await _sendCommandAndWaitImmediate("UG#GID");
-      await _sendCommandAndWaitImmediate("EP#AIRLINEID=GID#HARDCODE=HDC#UNSOL=Y");
-      await _sendCommandAndWaitImmediate("UC#999");
-      await _sendCommandAndWaitImmediate("AV");
-      await _sendCommandAndWaitImmediate("PV");
-      await _sendCommandAndWaitImmediate("SQ");
+      final boot1Res = await _sendCommandAndWaitImmediate("MX");
+      log(boot1Res.text);
+      final boot2Res = await _sendCommandAndWaitImmediate("UG#GID");
+      log(boot2Res.text);
+      final boot3Res = await _sendCommandAndWaitImmediate("EP#AIRLINEID=GID#HARDCODE=HDC#UNSOL=Y");
+      log(boot3Res.text);
+      final boot4Res = await _sendCommandAndWaitImmediate("UC#999");
+      log(boot4Res.text);
+      final boot5Res = await _sendCommandAndWaitImmediate("AV");
+      log(boot5Res.text);
+      final boot6Res = await _sendCommandAndWaitImmediate("PV");
+      log(boot6Res.text);
+      final boot7Res = await _sendCommandAndWaitImmediate("SQ");
+      log(boot7Res.text);
     });
   }
 

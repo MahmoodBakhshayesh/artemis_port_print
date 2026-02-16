@@ -17,7 +17,7 @@ class ArtemisPortPrinter extends ArtemisPortDevice implements IArtemisDevice {
   final ValueNotifier<DeviceConnectionStatus> _connectionStatus =
       ValueNotifier(DeviceConnectionStatus.disconnected);
   final ValueNotifier<String> _statusImagePathNotifier =
-      ValueNotifier('assets/images/devices/notExist/PRN.png');
+      ValueNotifier('assets/images/devices/notExist/BP.png');
 
   ArtemisPortPrinter({
     required super.portName,
@@ -78,7 +78,7 @@ class ArtemisPortPrinter extends ArtemisPortDevice implements IArtemisDevice {
   Widget icon([double size = 24]) => Image.asset(
         _statusImagePathNotifier.value,
         width: size,
-        package: 'artemis_acps', // Assuming this is your package name
+        package: 'artemis_port_util', // Corrected package name
       );
 
   /// Detailed device status (paper jam, etc.)
@@ -147,6 +147,6 @@ class ArtemisPortPrinter extends ArtemisPortDevice implements IArtemisDevice {
         statusFolder = 'ready';
       }
     }
-    _statusImagePathNotifier.value = 'assets/images/devices/$statusFolder/PRN.png';
+    _statusImagePathNotifier.value = 'assets/images/devices/$statusFolder/BP.png'; // Corrected to BP.png
   }
 }

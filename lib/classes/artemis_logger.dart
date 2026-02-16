@@ -17,6 +17,24 @@ class ArtemisLogger {
   /// Get the path to the log file.
   String get path => _logFile.path;
 
+  /// Opens the log file with the default system application.
+  Future<void> openLog() async {
+    try {
+      if (Platform.isWindows) {
+        // Use 'start' command on Windows
+        // Need to wrap path in quotes if it contains spaces, but process.run args handles it?
+        // 'start' is a shell command.
+        await Process.run('start', ['', _logFile.absolute.path], runInShell: true);
+      } else if (Platform.isMacOS) {
+        await Process.run('open', [_logFile.absolute.path]);
+      } else if (Platform.isLinux) {
+        await Process.run('xdg-open', [_logFile.absolute.path]);
+      }
+    } catch (e) {
+      if (enableConsole) print('Failed to open log file: $e');
+    }
+  }
+
   Future<void> log(String level, String message) async {
     final now = DateTime.now();
     final timestamp = _formatDate(now);

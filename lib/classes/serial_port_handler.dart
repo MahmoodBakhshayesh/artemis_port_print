@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
-import 'dart:typed_data'; // Added missing import
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 import '../artemis_port_util.dart';
+import 'artemis_logger.dart';
 import 'frame_parser.dart';
 import 'serial_device_config.dart';
 
@@ -22,6 +23,12 @@ class SerialPortHandler {
 
   /// enable/disable debug logs
   final bool enableLogging;
+  
+  /// Filter out periodic status logs (SQ/HDCSQ)
+  final bool logPeriodicStatus;
+  
+  /// Logger instance for file logging
+  final ArtemisLogger? logger;
 
   /// PORT STATUS (notify UI about port lifecycle)
   final ValueNotifier<PortStatus> portStatus = ValueNotifier(PortStatus.closed);
@@ -43,7 +50,7 @@ class SerialPortHandler {
   StreamSubscription<Uint8List>? _sub;
   Timer? _pollTimer;
   Timer? _pinPollTimer;
-  Timer? _hotplugTimer; // Added for hotplug monitoring
+  Timer? _hotplugTimer;
   Duration pinPollInterval = const Duration(milliseconds: 200);
 
   bool _bootstrapped = false;
@@ -65,6 +72,8 @@ class SerialPortHandler {
     required this.portName,
     required this.config,
     this.enableLogging = true,
+    this.logger,
+    this.logPeriodicStatus = false,
   }) : _inner = SerialPort(portName) {
     _startHotplugMonitor();
   }
@@ -73,12 +82,9 @@ class SerialPortHandler {
 
   bool get isOpen => isConnected;
 
-  /// Schedules a task to be executed sequentially in the command queue.
-  /// [isPrinting] : If true, sets the device status to 'Busy'/'Printing' before starting.
   Future<T> scheduleTask<T>(Future<T> Function() task, {bool isPrinting = false}) {
     final completer = Completer<T>();
     
-    // Ensure the queue chain continues regardless of previous task success/failure
     _taskQueue = _taskQueue.then((_) async {
        if (isPrinting) _setPrinting();
        await _runTask(task, completer);
@@ -170,7 +176,6 @@ class SerialPortHandler {
 
     log("open handler4");
 
-    // ---- PinChanged equivalent: poll and detect changes ----
     _pinPollTimer = Timer.periodic(pinPollInterval, (_) async {
       if (!_inner.isOpen) return;
 
@@ -181,7 +186,6 @@ class SerialPortHandler {
       _lastCts = newCts;
       _lastDsr = newDsr;
 
-      // Match your "Task.Delay(500)" debounce
       await Future<void>.delayed(const Duration(milliseconds: 500));
 
       _handlePinChanged(
@@ -257,7 +261,6 @@ class SerialPortHandler {
 
     log("open handler4");
 
-    // ---- PinChanged equivalent: poll and detect changes ----
     _pinPollTimer = Timer.periodic(pinPollInterval, (_) async {
       if (!_inner.isOpen) return;
 
@@ -268,7 +271,6 @@ class SerialPortHandler {
       _lastCts = newCts;
       _lastDsr = newDsr;
 
-      // Match your "Task.Delay(500)" debounce
       await Future<void>.delayed(const Duration(milliseconds: 500));
       _handlePinChanged(
         ctsHolding: newCts,
@@ -320,12 +322,10 @@ class SerialPortHandler {
     _dataCtrl.close();
   }
 
-  /// Use this method for general writing. It will be queued.
   Future<bool> sendBytes(List<int> message) {
     return scheduleTask(() => sendBytesImmediate(message), isPrinting: true);
   }
 
-  /// Use this method ONLY inside a scheduled task to avoid deadlock.
   Future<bool> sendBytesImmediate(List<int> message) async {
     if (!_inner.isOpen) {
       _log('[PORT][$portName] sendBytes failed: port not open.');
@@ -345,13 +345,9 @@ class SerialPortHandler {
     return _writeAll(framed);
   }
 
-  /// Internal method to send a command and wait for a response.
-  /// Must be called from within a scheduled task to ensure atomic operation.
   Future<DataReceive> _sendCommandAndWaitImmediate(String cmd, {Duration timeout = const Duration(seconds: 15)}) async {
     final completer = Completer<DataReceive>();
 
-    // Listen for the next response
-    // Note: this assumes strict request-response or that the next message is relevant.
     final sub = _dataCtrl.stream.listen((data) {
       if (!completer.isCompleted) {
         completer.complete(data);
@@ -379,7 +375,6 @@ class SerialPortHandler {
     }
   }
 
-  // ---- internals (unchanged except logging) ----
   void _onBytes(Uint8List chunk) {
     _log('[RX raw][$portName] ${chunk.length} bytes: $chunk');
 
@@ -421,35 +416,24 @@ class SerialPortHandler {
   }
 
   Future<void> _runBootstrap() async {
-    // Queue bootstrap commands to ensure no interleaving
     await scheduleTask(() async {
-      final boot1Res = await _sendCommandAndWaitImmediate("MX");
-      log(boot1Res.text);
-      final boot2Res = await _sendCommandAndWaitImmediate("UG#GID");
-      log(boot2Res.text);
-      final boot3Res = await _sendCommandAndWaitImmediate("EP#AIRLINEID=GID#HARDCODE=HDC#UNSOL=Y");
-      log(boot3Res.text);
-      final boot4Res = await _sendCommandAndWaitImmediate("UC#999");
-      log(boot4Res.text);
-      final boot5Res = await _sendCommandAndWaitImmediate("AV");
-      log(boot5Res.text);
-      final boot6Res = await _sendCommandAndWaitImmediate("PV");
-      log(boot6Res.text);
-      final boot7Res = await _sendCommandAndWaitImmediate("SQ");
-      log(boot7Res.text);
+      await _sendCommandAndWaitImmediate("MX");
+      await _sendCommandAndWaitImmediate("UG#GID");
+      await _sendCommandAndWaitImmediate("EP#AIRLINEID=GID#HARDCODE=HDC#UNSOL=Y");
+      await _sendCommandAndWaitImmediate("UC#999");
+      await _sendCommandAndWaitImmediate("AV");
+      await _sendCommandAndWaitImmediate("PV");
+      await _sendCommandAndWaitImmediate("SQ");
     });
   }
 
   Future<void> _pollOnce() async {
-    // Queue status poll
     await scheduleTask(() async {
       await _sendCommandAndWaitImmediate("SQ");
     });
   }
 
   Future<void> _sendCmd(String cmd) async {
-    // Deprecated for internal use in favor of _sendCommandAndWaitImmediate inside scheduled task
-    // But keeping it if used elsewhere.
     await sendBytesImmediate(cmd.codeUnits);
   }
 
@@ -509,20 +493,31 @@ class SerialPortHandler {
   }
 
   void _log(String msg) {
-    // log(msg);
     if (enableLogging) debugPrint(msg);
+    
+    // Filter out periodic status logs if not enabled
+    if (!logPeriodicStatus) {
+       // Filter SQ command logs
+       if (msg.contains('"SQ"') && msg.contains('[CMD]')) return;
+       // Filter SQ response/status logs (typical AEA response contains HDCSQ or just SQ if parsed)
+       // Usually: HDCSQOK...
+       if (msg.contains('HDCSQ')) return;
+    }
+
+    if (msg.contains('[TX]') || msg.contains('[CMD]') || msg.contains('[STATUS]')) {
+      logger?.info(msg);
+    } else {
+      logger?.debug(msg);
+    }
   }
 
   (bool cts, bool dsr) _readCtsDsr(SerialPort port) {
     try {
-      // port.signals is a bitmask of SerialPortSignal.* constants. :contentReference[oaicite:2]{index=2}
       final signals = port.signals;
       final cts = (signals & SerialPortSignal.cts) != 0;
       final dsr = (signals & SerialPortSignal.dsr) != 0;
-      // log("_readCtsDsr done  ${cts}  $dsr");
       return (cts, dsr);
     }catch(e){
-      // This is often where we catch unplug events during polling
       _internalClose(keepIntent: true);
       return (false,false);
     }
@@ -534,12 +529,9 @@ class SerialPortHandler {
     required bool dsrHolding,
     required DateTime occurred,
   }) {
-    // (Optional) log like your C#:
     log('[CTS: $ctsHolding, DSR: $dsrHolding] Changed.');
 
-    // Direct mapping of your state machine:
     if (!ctsHolding && !dsrHolding) {
-
       portStatus.value = PortStatus.closed;
       log("set port status close");
       return;
@@ -567,7 +559,6 @@ class SerialPortHandler {
         if (!isAvailable && _inner.isOpen) {
            _log('[HOTPLUG][$portName] Port disconnected (unplugged).');
            await _internalClose(keepIntent: true);
-           // Force status to error to indicate unplug
            portStatus.value = PortStatus.error;
         } else if (isAvailable && !_inner.isOpen && _intendedOpen) {
            _log('[HOTPLUG][$portName] Port detected. Reconnecting...');
@@ -586,7 +577,6 @@ class SerialPortHandler {
   }
 }
 
-// Match your existing types
 class DataReceive {
   final String text;
   final List<int> bytes;

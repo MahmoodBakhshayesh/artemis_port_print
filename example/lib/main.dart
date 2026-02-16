@@ -182,19 +182,33 @@ class _MyHomePageState extends State<MyHomePage> {
                       children: [
                         TextButton(
                           onPressed: () async {
-                            await bp.initIt();
+                            // await bp.initIt();
                           },
                           child: Text("init"),
                         ),
                         TextButton(
                           onPressed: () async {
-                            await bp.setBtPec();
+                            // await bp.setBtPec();
                           },
                           child: Text("set pec"),
                         ),
                         TextButton(
                           onPressed: () async {
-                            await bp.testPrintTag();
+                            // await bp.testPrintTag();
+                          },
+                          child: Text("test bt"),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            // await bp.lo();
+                            // Get the File object
+                            final logFile = bp.logger.file;
+
+
+                            String logs = await logFile.readAsString();
+                            print(logs);
+
+                            // print('Log saved at: ${portDevice.logger.path}');
                           },
                           child: Text("test bt"),
                         ),
@@ -235,7 +249,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
                       try {
                         await bp.connect();
-                        await bp.initIt();
+                        // await bp.initIt();
                         // bp.startMonitoring();
                       } catch (e) {
                         log("Error setting up printer: $e");

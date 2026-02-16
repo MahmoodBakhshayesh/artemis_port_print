@@ -345,6 +345,40 @@ class SerialPortHandler {
     return _writeAll(framed);
   }
 
+  /// Internal method to send a command and wait for a response.
+  /// Must be called from within a scheduled task to ensure atomic operation.
+  Future<DataReceive> _sendCommandAndWaitImmediate(String cmd, {Duration timeout = const Duration(seconds: 15)}) async {
+    final completer = Completer<DataReceive>();
+
+    // Listen for the next response
+    // Note: this assumes strict request-response or that the next message is relevant.
+    final sub = _dataCtrl.stream.listen((data) {
+      if (!completer.isCompleted) {
+        completer.complete(data);
+      }
+    });
+
+    _log('[CMD][$portName] Sending "$cmd" and waiting...');
+    final sent = await sendBytesImmediate(cmd.codeUnits);
+    if (!sent) {
+      sub.cancel();
+      throw Exception("Failed to send command $cmd");
+    }
+
+    final timer = Timer(timeout, () {
+      if (!completer.isCompleted) {
+        completer.completeError(TimeoutException("Command '$cmd' timed out", timeout));
+      }
+    });
+
+    try {
+      return await completer.future;
+    } finally {
+      timer.cancel();
+      sub.cancel();
+    }
+  }
+
   // ---- internals (unchanged except logging) ----
   void _onBytes(Uint8List chunk) {
     _log('[RX raw][$portName] ${chunk.length} bytes: $chunk');
@@ -389,25 +423,26 @@ class SerialPortHandler {
   Future<void> _runBootstrap() async {
     // Queue bootstrap commands to ensure no interleaving
     await scheduleTask(() async {
-      await _sendCmd("MX");
-      await _sendCmd("UG#GID");
-      await _sendCmd("EP#AIRLINEID=GID#HARDCODE=HDC#UNSOL=Y");
-      await _sendCmd("UC#999");
-      await _sendCmd("AV");
-      await _sendCmd("PV");
-      await _sendCmd("SQ");
+      await _sendCommandAndWaitImmediate("MX");
+      await _sendCommandAndWaitImmediate("UG#GID");
+      await _sendCommandAndWaitImmediate("EP#AIRLINEID=GID#HARDCODE=HDC#UNSOL=Y");
+      await _sendCommandAndWaitImmediate("UC#999");
+      await _sendCommandAndWaitImmediate("AV");
+      await _sendCommandAndWaitImmediate("PV");
+      await _sendCommandAndWaitImmediate("SQ");
     });
   }
 
   Future<void> _pollOnce() async {
     // Queue status poll
     await scheduleTask(() async {
-      await _sendCmd("SQ");
+      await _sendCommandAndWaitImmediate("SQ");
     });
   }
 
   Future<void> _sendCmd(String cmd) async {
-    _log('[CMD][$portName] Sending "$cmd"...');
+    // Deprecated for internal use in favor of _sendCommandAndWaitImmediate inside scheduled task
+    // But keeping it if used elsewhere.
     await sendBytesImmediate(cmd.codeUnits);
   }
 

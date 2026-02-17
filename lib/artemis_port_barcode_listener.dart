@@ -6,12 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 import 'classes/artemis_logger.dart';
 import 'classes/artemis_port_device.dart';
+import 'classes/artemis_port_print_setting.dart';
 import 'classes/enums.dart';
 import 'classes/i_artemis_device.dart';
+import 'classes/serial_port_handler.dart';
 
 class ArtemisPortBarcodeListener extends ArtemisPortDevice implements IArtemisDevice {
-  late final SerialPort _port;
-  SerialPortReader? _reader;
   final _controller = StreamController<String>.broadcast();
   final void Function(String data)? onData;
   List<int> _buffer = [];
@@ -30,15 +30,18 @@ class ArtemisPortBarcodeListener extends ArtemisPortDevice implements IArtemisDe
   /// Themed image path that changes based on the current status.
   ValueListenable<String> get statusImagePath => _statusImagePathNotifier;
 
-  ArtemisPortBarcodeListener(
-      {required super.portName,
-      super.config,
-      super.enableLogging,
-      this.onData,
-      ArtemisLogger? existingLogger,
-      }) : super(existingLogger: existingLogger) {
-    // _port = SerialPort(portName);
+  ArtemisPortBarcodeListener({
+    required super.portName,
+    super.config,
+    super.enableLogging,
+    super.logPeriodicStatus = false,
+    this.onData,
+    ArtemisLogger? existingLogger,
+    SerialPortHandler? existingHandler,
+  }) : super(existingLogger: existingLogger, existingHandler: existingHandler) {
     _statusNotifier.addListener(_updateStatus);
+    handler.portStatus.addListener(_updateStatus);
+    _updateStatus(); // Initial status check
   }
 
   // -------- IArtemisDevice Implementation --------
@@ -48,7 +51,7 @@ class ArtemisPortBarcodeListener extends ArtemisPortDevice implements IArtemisDe
 
   @override
   DeviceConnectionStatus get currentConnectionStatus => _connectionStatus.value;
-  
+
   @override
   Future<bool> connect() async => open();
 
@@ -60,15 +63,11 @@ class ArtemisPortBarcodeListener extends ArtemisPortDevice implements IArtemisDe
 
   @override
   void dispose() {
-    stopListening();
-    close();
-    _controller.close();
-    // _port.dispose();
     _statusNotifier.removeListener(_updateStatus);
-    _statusNotifier.dispose();
+    handler.portStatus.removeListener(_updateStatus);
+    _controller.close();
     _connectionStatus.dispose();
     _statusImagePathNotifier.dispose();
-    super.dispose();
   }
 
   // -------- Public API --------
@@ -82,7 +81,7 @@ class ArtemisPortBarcodeListener extends ArtemisPortDevice implements IArtemisDe
       return true;
     }
     _statusNotifier.value = BarcodeReaderStatus.connecting;
-    await handler.openReader((data) {
+    bool opened = await handler.openReader((data) {
       _buffer.addAll(data);
       _flushTimer?.cancel();
       _flushTimer = Timer(const Duration(milliseconds: 30), () {
@@ -94,7 +93,8 @@ class ArtemisPortBarcodeListener extends ArtemisPortDevice implements IArtemisDe
         _buffer.clear();
       });
     });
-    if (!handler.isOpen) {
+
+    if (!opened || !handler.isOpen) {
       final error =
           'Failed to open port $portName. Check permissions or if the port is in use.';
       _controller.addError(error);
@@ -115,54 +115,29 @@ class ArtemisPortBarcodeListener extends ArtemisPortDevice implements IArtemisDe
   }
 
   void startListening() {
-    return;
-
-
     if (!handler.isOpen) {
-      open().then((_){
-        log("Starting to listen for barcodes");
-        _statusNotifier.value = BarcodeReaderStatus.listening;
-        _reader = handler.reader;
-        _reader!.stream.listen((data) {
-          _buffer.addAll(data);
-          _flushTimer?.cancel();
-          _flushTimer = Timer(const Duration(milliseconds: 30), () {
-            final barcode = ascii.decode(_buffer).trim();
-            if (barcode.isNotEmpty) {
-              onData?.call(barcode);
-              _controller.add(barcode);
-            }
-            _buffer.clear();
-          });
-        }, onError: (error) {
-          log("Error while listening to port: $error");
-          _controller.addError(error);
-          _statusNotifier.value = BarcodeReaderStatus.error;
-        });
+      open().then((success) {
+        if (success) {
+          log("Starting to listen for barcodes");
+          _statusNotifier.value = BarcodeReaderStatus.listening;
+        }
       });
-      // if (!open()) {
-      //   return;
-      // }
+    } else {
+      _statusNotifier.value = BarcodeReaderStatus.listening;
     }
-
   }
 
   void stopListening() {
-    _reader?.close();
-    _reader = null;
     if (currentBarcodeReaderStatus == BarcodeReaderStatus.listening) {
       _statusNotifier.value = BarcodeReaderStatus.connected;
     }
   }
 
-  // bool get isOpen => _port.isOpen;
-
   static List<String> get availablePorts => SerialPort.availablePorts;
 
   void _updateStatus() {
     // First, update the generic connection status
-    switch (portStatus.value) {
-      case PortStatus.open:
+    switch (handler.portStatus.value) {
       case PortStatus.open:
         _connectionStatus.value = DeviceConnectionStatus.connected;
         break;
@@ -170,14 +145,12 @@ class ArtemisPortBarcodeListener extends ArtemisPortDevice implements IArtemisDe
         _connectionStatus.value = DeviceConnectionStatus.connecting;
         break;
       case PortStatus.closed:
+      case PortStatus.closing:
         _connectionStatus.value = DeviceConnectionStatus.disconnected;
         break;
       case PortStatus.error:
         _connectionStatus.value = DeviceConnectionStatus.error;
         break;
-      case PortStatus.closing:
-        _connectionStatus.value = DeviceConnectionStatus.disconnected;
-
     }
 
     // Then, update the image path
@@ -188,7 +161,7 @@ class ArtemisPortBarcodeListener extends ArtemisPortDevice implements IArtemisDe
         break;
 
       case BarcodeReaderStatus.listening:
-        statusFolder = 'ready'; // Using 'printing' to indicate active listening
+        statusFolder = 'ready';
         break;
       case BarcodeReaderStatus.connecting:
         statusFolder = 'init';
@@ -197,16 +170,17 @@ class ArtemisPortBarcodeListener extends ArtemisPortDevice implements IArtemisDe
         statusFolder = 'diskError';
         break;
       case BarcodeReaderStatus.disconnected:
-
-      statusFolder = 'notExist';
+        statusFolder = 'notExist';
         break;
     }
 
-    _statusImagePathNotifier.value = 'assets/images/devices/$statusFolder/BC.png';
-
+    _statusImagePathNotifier.value =
+        'assets/images/devices/$statusFolder/BC.png';
   }
 
-  Widget icon([double size = 24])=>ValueListenableBuilder(valueListenable: statusImagePath, builder: (c,s,_){
-    return Image.asset(s, width: size, package: 'artemis_port_util');
-  });
+  Widget icon([double size = 24]) => ValueListenableBuilder(
+      valueListenable: statusImagePath,
+      builder: (c, s, _) {
+        return Image.asset(s, width: size, package: 'artemis_port_util');
+      });
 }

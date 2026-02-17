@@ -100,17 +100,20 @@ class SerialPortHandler {
     try {
       final result = await task();
       completer.complete(result);
+
     } catch (e, s) {
       completer.completeError(e, s);
     }
   }
 
-  Future<bool> open() async {
-    log("open handler1");
+  Future<bool> open({required String source}) async {
+    // log("open handler1");
     _intendedOpen = true;
     _mode = _HandlerMode.readWrite;
-
+    log("called open already open from $source");
     if (_inner.isOpen) {
+
+
       portStatus.value = PortStatus.open;
       return true;
     }
@@ -118,14 +121,14 @@ class SerialPortHandler {
     _setConnecting();
     portStatus.value = PortStatus.opening;
     _log('[PORT][$portName] Opening...');
-
     if (!_inner.openReadWrite()) {
       portStatus.value = PortStatus.error;
-
+      log("called open error");
       _log('[PORT][$portName] Failed to open.');
       return false;
     }
     _log('[PORT][$portName] Opened.');
+
 
     try {
       final c = SerialPortConfig()
@@ -417,13 +420,14 @@ class SerialPortHandler {
 
   Future<void> _runBootstrap() async {
     await scheduleTask(() async {
-      await _sendCommandAndWaitImmediate("MX");
-      await _sendCommandAndWaitImmediate("UG#GID");
-      await _sendCommandAndWaitImmediate("EP#AIRLINEID=GID#HARDCODE=HDC#UNSOL=Y");
-      await _sendCommandAndWaitImmediate("UC#999");
-      await _sendCommandAndWaitImmediate("AV");
-      await _sendCommandAndWaitImmediate("PV");
-      await _sendCommandAndWaitImmediate("SQ");
+      final com1 = await _sendCommandAndWaitImmediate("MX");
+      final com2 = await _sendCommandAndWaitImmediate("UG#GID");
+      final com3 = await _sendCommandAndWaitImmediate("EP#AIRLINEID=GID#HARDCODE=HDC#UNSOL=Y");
+      final com4 = await _sendCommandAndWaitImmediate("UC#999");
+      final com5 = await _sendCommandAndWaitImmediate("AV");
+      final com6 = await _sendCommandAndWaitImmediate("PV");
+      final com7 = await _sendCommandAndWaitImmediate("SQ");
+      log("$com1  $com2 $com3 $com4 $com5 $com6 $com7");
     });
   }
 
@@ -449,6 +453,7 @@ class SerialPortHandler {
     var start = 0, end = data.length;
     if (end > 0 && data[0] == stx) start = 1;
     if (end - start > 0 && data[end - 1] == etx) end -= 1;
+
     return Uint8List.fromList(data.sublist(start, end));
   }
 
@@ -493,20 +498,25 @@ class SerialPortHandler {
   }
 
   void _log(String msg) {
-    if (enableLogging) debugPrint(msg);
-    
     // Filter out periodic status logs if not enabled
     if (!logPeriodicStatus) {
        // Filter SQ command logs
        if (msg.contains('"SQ"') && msg.contains('[CMD]')) return;
        // Filter SQ response/status logs (typical AEA response contains HDCSQ or just SQ if parsed)
-       // Usually: HDCSQOK...
-       if (msg.contains('HDCSQ')) return;
+       if (msg.contains('HDCSQ') || msg.contains('SQOK')) return;
+       // Filter logs starting with [STATUS] if it's just a general update
+       if (msg.startsWith('[STATUS]') && (msg.contains('online') || msg.contains('Ready'))) return;
     }
 
-    if (msg.contains('[TX]') || msg.contains('[CMD]') || msg.contains('[STATUS]')) {
+    if (enableLogging) debugPrint(msg);
+
+    // File logging rules
+    if (msg.contains('[TX]') || msg.contains('[CMD]')) {
       logger?.info(msg);
     } else {
+      // Don't log filtered status to file either
+      if (!logPeriodicStatus && msg.contains('[STATUS]')) return;
+
       logger?.debug(msg);
     }
   }
@@ -563,9 +573,10 @@ class SerialPortHandler {
         } else if (isAvailable && !_inner.isOpen && _intendedOpen) {
            _log('[HOTPLUG][$portName] Port detected. Reconnecting...');
            if (_mode == _HandlerMode.readWrite) {
-             await open();
+             await open(source: "port reconnect detect");
            } else if (_mode == _HandlerMode.readOnly) {
              if (savedHandler != null) {
+
                await openReader(savedHandler);
              }
            }

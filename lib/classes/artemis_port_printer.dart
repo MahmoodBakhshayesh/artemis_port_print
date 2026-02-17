@@ -1,9 +1,11 @@
+import 'dart:developer';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'artemis_logger.dart';
 import 'artemis_port_device.dart';
+import 'artemis_port_print_setting.dart';
 import 'enums.dart';
 import 'i_artemis_device.dart';
 import 'print_result.dart';
@@ -12,8 +14,10 @@ import 'serial_print_queue.dart';
 import 'status_class.dart';
 
 class ArtemisPortPrinter extends ArtemisPortDevice implements IArtemisDevice {
-  late final SerialPortHandler _handler;
   late final SerialPrintQueue _queue;
+  final PrinterType printerType;
+  bool _isConfiguring = false;
+
   final ValueNotifier<DeviceConnectionStatus> _connectionStatus =
       ValueNotifier(DeviceConnectionStatus.disconnected);
   final ValueNotifier<String> _statusImagePathNotifier =
@@ -23,25 +27,21 @@ class ArtemisPortPrinter extends ArtemisPortDevice implements IArtemisDevice {
     required super.portName,
     super.config,
     super.enableLogging = false,
+    super.logPeriodicStatus = false,
+    this.printerType = PrinterType.bp,
     ArtemisLogger? existingLogger,
-  }) : super(existingLogger: existingLogger) {
-    _handler = SerialPortHandler(
-      portName: portName,
-      config: settings.getConfig,
-      enableLogging: enableLogging,
-      logger: logger, // Use inherited logger
-    );
-
+    SerialPortHandler? existingHandler,
+  }) : super(existingLogger: existingLogger, existingHandler: existingHandler) {
     _queue = SerialPrintQueue(
-      _handler,
+      handler, 
       timeout: const Duration(seconds: 2),
       quietWindow: const Duration(milliseconds: 150),
       stripFraming: true,
     );
 
     // Listen to both status notifiers to update the image path and connection status
-    _handler.portStatus.addListener(_updateStatus);
-    _handler.statusMgr.statusNotifier.addListener(_updateStatus);
+    handler.portStatus.addListener(_updateStatus);
+    handler.statusMgr.statusNotifier.addListener(_updateStatus);
     _updateStatus(); // Initial status check
   }
 
@@ -54,19 +54,17 @@ class ArtemisPortPrinter extends ArtemisPortDevice implements IArtemisDevice {
   DeviceConnectionStatus get currentConnectionStatus => _connectionStatus.value;
 
   @override
-  Future<bool> connect() => _handler.open();
+  Future<bool> connect() => handler.open(source: "connect");
 
   @override
-  Future<bool> disconnect() => _handler.close();
+  Future<bool> disconnect() => handler.close();
 
   @override
   void dispose() {
-    _handler.portStatus.removeListener(_updateStatus);
-    _handler.statusMgr.statusNotifier.removeListener(_updateStatus);
+    handler.portStatus.removeListener(_updateStatus);
+    handler.statusMgr.statusNotifier.removeListener(_updateStatus);
     _connectionStatus.dispose();
     _statusImagePathNotifier.dispose();
-    _handler.dispose(); // Use dispose to clean up hotplug timers
-    super.dispose();
   }
 
   // -------- Public API --------
@@ -75,36 +73,77 @@ class ArtemisPortPrinter extends ArtemisPortDevice implements IArtemisDevice {
   ValueListenable<String> get statusImagePath => _statusImagePathNotifier;
 
   /// Returns an Image widget based on the current status.
-  Widget icon([double size = 24]) => Image.asset(
-        _statusImagePathNotifier.value,
-        width: size,
-        package: 'artemis_port_util', // Corrected package name
+  Widget icon([double size = 24]) => ValueListenableBuilder<String>(
+        valueListenable: _statusImagePathNotifier,
+        builder: (context, path, _) => Image.asset(
+          path,
+          width: size,
+          package: 'artemis_port_util',
+        ),
       );
 
   /// Detailed device status (paper jam, etc.)
   ValueListenable<DeviceStatus> get statusListenable =>
-      _handler.statusMgr.statusNotifier;
-  DeviceStatus get currentStatus => _handler.statusMgr.status;
+      handler.statusMgr.statusNotifier;
+  DeviceStatus get currentStatus => handler.statusMgr.status;
 
   Future<PrintResult> printText(String data) async {
-    await _handler.open();
     return _queue.printText(data);
   }
 
   Future<PrintResult> printBytes(Uint8List bytes) async {
-    await _handler.open();
     return _queue.enqueue(bytes);
   }
 
   Future<DeviceStatus> testQuery() async {
-    await _handler.open();
-    await _handler.sendBytes("SQ".codeUnits);
-    return _handler.statusMgr.status;
+    await handler.sendBytes("SQ".codeUnits);
+    return handler.statusMgr.status;
+  }
+
+  Future<PrintResult> setPec(String pectab) async {
+    _isConfiguring = true;
+    _updateStatus();
+    // Keep it in configuring state for a short moment to show the animation
+    await Future.delayed(const Duration(seconds: 3));
+    try {
+      final printRes = await _queue.printText(pectab);
+      if ((printRes.text ?? '').startsWith("HDCERRM")) {
+        await initIt();
+        return setPec(pectab);
+      }
+      log("pec res ==> ${printRes.text}");
+      return printRes;
+    } finally {
+      _isConfiguring = false;
+      _updateStatus();
+    }
+  }
+
+  Future<PrintResult> testPrint(String data) async {
+    final printRes = await _queue.printText(data);
+    if ((printRes.text ?? '').startsWith("HDCERRM")) {
+      await initIt();
+      return testPrint(data);
+    }
+    return printRes;
+  }
+
+  Future<void> initIt() async {
+    String command1 = "UK";
+    String command2 = "MX";
+    String command3 = "UG#GID";
+    String command4 = "EP#AIRLINEID=GID#HARDCODE=HDC#UNSOL=Y";
+    String command5 = "UC#999";
+
+    await handler.sendBytes(command1.codeUnits);
+    await handler.sendBytes(command2.codeUnits);
+    await handler.sendBytes(command3.codeUnits);
+    await handler.sendBytes(command4.codeUnits);
+    await handler.sendBytes(command5.codeUnits);
   }
 
   void _updateStatus() {
-    // First, update the generic connection status based on PortStatus
-    switch (_handler.portStatus.value) {
+    switch (handler.portStatus.value) {
       case PortStatus.open:
         _connectionStatus.value = DeviceConnectionStatus.connected;
         break;
@@ -120,33 +159,46 @@ class ArtemisPortPrinter extends ArtemisPortDevice implements IArtemisDevice {
         break;
     }
 
-    // Then, determine the image path
     String statusFolder;
-    final portStatus = _handler.portStatus.value;
-    final deviceStatus = _handler.statusMgr.status;
+    String extension = 'png';
+    final portStatusValue = handler.portStatus.value;
+    final deviceStatus = handler.statusMgr.status;
 
-    if (portStatus == PortStatus.closed || portStatus == PortStatus.closing) {
+    if (portStatusValue == PortStatus.closed || portStatusValue == PortStatus.closing) {
       statusFolder = 'notExist';
-    } else if (portStatus == PortStatus.error) {
+    } else if (portStatusValue == PortStatus.error) {
       statusFolder = 'hasError';
-    } else if (portStatus == PortStatus.opening) {
+    } else if (portStatusValue == PortStatus.opening) {
       statusFolder = 'init';
+    } else if (_isConfiguring) {
+      statusFolder = 'configuring';
+      extension = 'gif'; // Use gif for configuring state
     } else {
       // Port is open, so use the detailed device status
-      if (deviceStatus.paperJam) {
+      if (deviceStatus.state == StatusState.busy) {
+        statusFolder = 'printing';
+        extension = 'gif';
+      } else if (deviceStatus.paperJam) {
         statusFolder = 'paperJam';
       } else if (deviceStatus.paperOut) {
         statusFolder = 'paperOut';
       } else if (deviceStatus.headLifted) {
         statusFolder = 'headLifted';
+      } else if (deviceStatus.paperOut) {
+         statusFolder = 'paperOut';
       } else if (deviceStatus.powerOff) {
         statusFolder = 'powerOff';
-      } else if (!deviceStatus.ready) {
-        statusFolder = 'unknown';
-      } else {
+      } else if (deviceStatus.ready) {
         statusFolder = 'ready';
+      } else {
+        statusFolder = 'unknown';
       }
     }
-    _statusImagePathNotifier.value = 'assets/images/devices/$statusFolder/BP.png'; // Corrected to BP.png
+    
+    final devicePrefix = printerType == PrinterType.bt ? 'BT' : 'BP';
+    final newPath = 'assets/images/devices/$statusFolder/$devicePrefix.$extension';
+    if (_statusImagePathNotifier.value != newPath) {
+       _statusImagePathNotifier.value = newPath;
+    }
   }
 }

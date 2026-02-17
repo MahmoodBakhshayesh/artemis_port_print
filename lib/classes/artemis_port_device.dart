@@ -15,6 +15,7 @@ class ArtemisPortDevice {
   final String portName;
   late final ArtemisPortDeviceSetting settings;
   final bool enableLogging;
+  final bool logPeriodicStatus;
   late final SerialPortMonitor monitor;
   late final ArtemisLogger logger;
   IArtemisDevice? _activeDevice;
@@ -23,9 +24,11 @@ class ArtemisPortDevice {
     required this.portName, 
     ArtemisPortDeviceSetting? config, 
     this.enableLogging = false,
+    this.logPeriodicStatus = false,
     String? deviceName,
     String? logDirectory,
     ArtemisLogger? existingLogger,
+    SerialPortHandler? existingHandler,
   }) {
     settings = config ?? ArtemisPortDeviceSetting(portName: portName);
     monitor = SerialPortMonitor(portName);
@@ -40,12 +43,17 @@ class ArtemisPortDevice {
       );
     }
 
-    handler = SerialPortHandler(
-      portName: portName,
-      config: settings.getConfig,
-      enableLogging: enableLogging,
-      logger: logger,
-    );
+    if (existingHandler != null) {
+      handler = existingHandler;
+    } else {
+      handler = SerialPortHandler(
+        portName: portName,
+        config: settings.getConfig,
+        enableLogging: enableLogging,
+        logPeriodicStatus: logPeriodicStatus,
+        logger: logger,
+      );
+    }
     handler.portStatus.addListener(_updateStatus);
   }
 
@@ -53,7 +61,7 @@ class ArtemisPortDevice {
 
 
   void _updateStatus() {
-    log("should update port status ${handler.portStatus.value}");
+    // log("should update port status ${handler.portStatus.value}");
   }
 
   ArtemisPortPrinter get asPrinter {
@@ -65,8 +73,11 @@ class ArtemisPortDevice {
       portName: portName, 
       config: settings, 
       enableLogging: enableLogging,
-      existingLogger: logger
+      logPeriodicStatus: logPeriodicStatus,
+      existingLogger: logger,
+      existingHandler: handler, // Pass our handler
     );
+    
     _activeDevice = printer;
     return printer;
   }
@@ -80,8 +91,11 @@ class ArtemisPortDevice {
       portName: portName, 
       config: settings, 
       enableLogging: enableLogging,
-      existingLogger: logger
+      logPeriodicStatus: logPeriodicStatus,
+      existingLogger: logger,
+      existingHandler: handler, // Pass our handler
     );
+
     _activeDevice = barcodeReader;
     return barcodeReader;
   }
@@ -90,6 +104,7 @@ class ArtemisPortDevice {
   void dispose() {
     _activeDevice?.dispose();
     _activeDevice = null;
+    handler.portStatus.removeListener(_updateStatus);
     handler.dispose(); 
   }
 

@@ -130,3 +130,5 @@ enum Handshake {
 }
 
 enum ProtocolMode { none, framed }
+
+enum PrinterType { bp, bt }

@@ -49,10 +49,7 @@ class SerialPrintQueue {
 
   Future<PrintResult> _run(Uint8List requestBytes) async {
     if (!sp.isConnected) {
-      final opened = await sp.open();
-      if (!opened) {
-        return const PrintResult(PrintStatus.error, text: 'Open failed');
-      }
+      return const PrintResult(PrintStatus.error, text: 'Port not open');
     }
 
     final chunks = <int>[];

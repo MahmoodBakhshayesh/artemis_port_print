@@ -182,19 +182,24 @@ class _MyHomePageState extends State<MyHomePage> {
                       children: [
                         TextButton(
                           onPressed: () async {
-                            // await bp.initIt();
+                            await bp.initIt();
                           },
                           child: Text("init"),
                         ),
                         TextButton(
                           onPressed: () async {
-                            // await bp.setBtPec();
+                            String btPec =
+                                'BTT1039~H0510255=#02C0 E502250304#03B1 A494250541#04C0M1120370201#06B1 A002250541=03#11C0MA146250304=02#12B1M3150454041=03#14B1 A190259041=03#19B1 A270255041=03#20C0 E484250304=02#21B1 A475250541=03#22C0 E466250304=02#23B1 A457250541=03#47C0M1092370201=73#48C0M1092090303=71#49C0M1092180303=72#50C0 1036090201=EA#51C0 1032090201=85#53C0 1024220201=81#54C0 1020090201TO:#55C0 1020150201=86#56C0 1020250201=71#57C0 1020300201=72#60C0 1030090202=E1#61C0 1030200202=E2#62C0 1030280202=E0#63C0 1028090201=89#64C0 1016090201=75#65C0 1008090201=71#66C0M1092340201=83#67C0M1096090201TO:#68C0 1012090201=02#69C0M1085090201VIA1:#71C0M1120090303#72C0M1120180303#73C0M1124370201#74C0M1112090201#75C0 1024310201#81C0M1112370201#83C0 1028250201#85C0M1116090201#86C0MA100271011#87L0MA125300000#89C0M1120370201#91S0MA110250450#93S0MA090250450#94S0MA070250450#E0C0M1072160304#E1C0M1080131011#E2C0M1072050304#E3C0M1065050201#E4C0M1065090201#E5C0M1065150201#E6C0M1072350201#E7C0M1065200201#E8C0M1072450202#E9C0M1065250201#EAC0M1124090201#EDC0MB064250404-TEXT-#EEC0M1096150201#EFC0MA076250201#F0C0 1024090201#F1C0 1016180201#F2C0 1012350201#F3C0 1030400202#F4C0M1065350201#F5C0M1065450201#F6C0 A008220201#FEC0 1001010201#FFC0 1001010201#';
+
+                            await bp.setPec(btPec);
                           },
                           child: Text("set pec"),
                         ),
                         TextButton(
                           onPressed: () async {
-                            // await bp.testPrintTag();
+                            String btData = 'BTP103901#020000116431#030000116431#04028#71ZZ#721313#7303NOV#74TORENTO-#75YTZ#811/25#83E#85AMATO/ROSALIE#86YVR#89028#EASMARTLYNX#EEVANCOUVER#F0NL1V4#F104NOV/05:23#F22675#F3#F5#F6116431#';
+
+                            await bp.testPrint(btData);
                           },
                           child: Text("test bt"),
                         ),
@@ -204,13 +209,13 @@ class _MyHomePageState extends State<MyHomePage> {
                             // Get the File object
                             final logFile = bp.logger.file;
 
+                            await bp.logger.openLog();
+                            // String logs = await logFile.readAsString();
+                            // print(logs);
 
-                            String logs = await logFile.readAsString();
-                            print(logs);
-
-                            // print('Log saved at: ${portDevice.logger.path}');
+                            // print('Log saved at: ${bp.logger.path}');
                           },
-                          child: Text("test bt"),
+                          child: Text("log"),
                         ),
                         // TextButton(
                         //   onPressed: () async {

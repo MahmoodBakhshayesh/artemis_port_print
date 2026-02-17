@@ -9,7 +9,22 @@ class ArtemisLogger {
     required this.deviceName,
     String? logDirectory,
     this.enableConsole = true,
-  }) : _logFile = File('${logDirectory ?? 'logs'}/artemis_log_${deviceName.replaceAll(RegExp(r'[^\w\.-]'), '_')}.txt');
+    bool clearExistingLog = true, // Default to true to reset log every session
+  }) : _logFile = File('${logDirectory ?? 'logs'}/artemis_log_${deviceName.replaceAll(RegExp(r'[^\w\.-]'), '_')}.txt') {
+    if (clearExistingLog) {
+       _clearLogFile();
+    }
+  }
+
+  void _clearLogFile() {
+     try {
+       if (_logFile.existsSync()) {
+         _logFile.deleteSync();
+       }
+     } catch (e) {
+       if (enableConsole) print('Failed to clear log file: $e');
+     }
+  }
 
   /// Get the underlying log file object.
   File get file => _logFile;
